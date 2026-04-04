@@ -617,23 +617,14 @@ def main():
     application.add_handler(CommandHandler('help', help_command))
     application.add_error_handler(error_handler)
     
-    print("🤖 Бот Avantyurist запущен!")
+      print("🤖 Бот Avantyurist запущен!")
     print("📊 Лимит вступлений: 3 раза")
     print("📁 Кастомное меню установлено! Кнопка меню внизу экрана")
     print("📋 Команда /groups доступна в меню")
     print(f"🔗 Ссылка на группу: {INVITE_LINK}")
     print(f"📖 Регламент: {REGULATIONS_LINK}")
     
-    # Запускаем API сервер в отдельном потоке
-    api_thread = threading.Thread(target=run_api_server, daemon=True)
-    api_thread.start()
-    print("🌐 API сервер запущен на порту 5000")
-    print("📍 API доступен по адресу: http://localhost:5000/api/rating")
-    
     application.run_polling()
+
 if __name__ == '__main__':
-    # Если передан аргумент --api, запускаем только API
-    if len(sys.argv) > 1 and sys.argv[1] == '--api':
-        run_api_server()
-    else:
-        main()
+    main()
