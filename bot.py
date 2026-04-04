@@ -2,6 +2,8 @@
 import logging
 import json
 import os
+import requests
+import base64
 from datetime import datetime
 from typing import Dict
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
@@ -22,8 +24,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ============ ФУНКЦИЯ СОХРАНЕНИЯ РЕЙТИНГА ============
-def save_rating_to_json():
-    """Сохраняет рейтинг в JSON файл для сайта"""
+# Сохраняем рейтинг в GitHub
+save_rating_to_github()
     try:
         # Создаем папку data, если её нет
         os.makedirs('data', exist_ok=True)
@@ -374,6 +376,72 @@ async def regulations_read(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # СОХРАНЯЕМ РЕЙТИНГ В JSON ДЛЯ САЙТА
     save_rating_to_json()
+    def save_rating_to_github():
+    """Сохраняет рейтинг в GitHub репозиторий"""
+    try:
+        # Получаем список рейтинга
+        rating_list = rating_db.get_rating_list(100)
+        result = []
+        
+        for idx, user in enumerate(rating_list, 1):
+            result.append({
+                'position': idx,
+                'user_id': user[0],
+                'username': user[1] or f"user_{user[0]}",
+                'name': f"{user[2]} {user[3] or ''}".strip(),
+                'points': user[4],
+                'level': user[5],
+                'projects': user[6] + user[7],
+                'investments': user[8],
+                'reputation': user[10] if len(user) > 10 else 0
+            })
+        
+        # Формируем JSON
+        data = {
+            'success': True,
+            'data': result,
+            'total': len(result),
+            'updated_at': datetime.now().isoformat()
+        }
+        
+        content = json.dumps(data, ensure_ascii=False, indent=2)
+        
+        # GitHub API
+        github_token = os.environ.get('GITHUB_TOKEN')
+        if not github_token:
+            logger.warning("GITHUB_TOKEN не установлен")
+            return False
+            
+        url = "https://api.github.com/repos/poverzhukilya-ops/telegram-verification-bot/contents/data/rating.json"
+        headers = {
+            "Authorization": f"Bearer {github_token}",
+            "Accept": "application/vnd.github.v3+json"
+        }
+        
+        # Получаем текущий файл
+        response = requests.get(url, headers=headers)
+        sha = response.json().get('sha') if response.status_code == 200 else None
+        
+        # Подготовка данных
+        commit_data = {
+            "message": f"Update rating {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            "content": base64.b64encode(content.encode('utf-8')).decode('utf-8'),
+            "sha": sha
+        }
+        
+        # Отправляем
+        result = requests.put(url, headers=headers, json=commit_data)
+        
+        if result.status_code in [200, 201]:
+            logger.info(f"✅ Рейтинг сохранен в GitHub: {len(result)} участников")
+            return True
+        else:
+            logger.error(f"❌ Ошибка GitHub API: {result.status_code}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"❌ Ошибка: {e}")
+        return False
     
     db.set_verified(user_id, True)
     db.update_user_status(user_id, "neutral", "Верифицирован через бота")
