@@ -1,0 +1,18 @@
+{
+  "success": true,
+  "data": [
+    {
+      "position": 1,
+      "user_id": 852799858,
+      "username": "Ilyapoverzhuk",
+      "name": "Ilya",
+      "points": 300,
+      "level": 4,
+      "projects": 0,
+      "investments": 0.0,
+      "reputation": 0.0
+    }
+  ],
+  "total": 1,
+  "updated_at": "2026-04-04T21:09:33.445246"
+}
