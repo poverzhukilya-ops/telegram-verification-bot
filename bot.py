@@ -503,7 +503,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============ API ДЛЯ РЕЙТИНГА ============
 
 api_app = Flask(__name__)
-CORS(api_app)
+CORS(api_app, origins=['https://avantyrist1188.netlify.app', 'http://localhost:3000', '*'])
 
 @api_app.route('/api/rating', methods=['GET'])
 def get_rating():
