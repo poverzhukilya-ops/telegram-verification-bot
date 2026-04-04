@@ -23,13 +23,20 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ============ ФУНКЦИЯ СОХРАНЕНИЯ РЕЙТИНГА ============
-# Сохраняем рейтинг в GitHub
-save_rating_to_github()
+# Состояния для разговора
+STEP1_CAPTCHA = 1
+STEP2_REGULATIONS = 2
+ADD_GROUP_NAME = 3
+ADD_GROUP_LINK = 4
+
+# Хранилище для пользователей
+verified_users = {}
+user_states = {}
+
+# ============ ФУНКЦИЯ СОХРАНЕНИЯ РЕЙТИНГА В GITHUB ============
+def save_rating_to_github():
+    """Сохраняет рейтинг в GitHub репозиторий"""
     try:
-        # Создаем папку data, если её нет
-        os.makedirs('data', exist_ok=True)
-        
         # Получаем список рейтинга
         rating_list = rating_db.get_rating_list(100)
         result = []
@@ -47,51 +54,54 @@ save_rating_to_github()
                 'reputation': user[10] if len(user) > 10 else 0
             })
         
-        # Сохраняем в JSON файл
-        with open('data/rating.json', 'w', encoding='utf-8') as f:
-            json.dump({
-                'success': True, 
-                'data': result, 
-                'total': len(result),
-                'updated_at': datetime.now().isoformat()
-            }, f, ensure_ascii=False, indent=2)
+        # Формируем JSON
+        data = {
+            'success': True,
+            'data': result,
+            'total': len(result),
+            'updated_at': datetime.now().isoformat()
+        }
         
-        logger.info(f"✅ Рейтинг сохранен в JSON: {len(result)} участников")
-        return True
+        content = json.dumps(data, ensure_ascii=False, indent=2)
+        
+        # GitHub API
+        github_token = os.environ.get('GITHUB_TOKEN')
+        if not github_token:
+            logger.warning("GITHUB_TOKEN не установлен")
+            return False
+            
+        url = "https://api.github.com/repos/poverzhukilya-ops/telegram-verification-bot/contents/data/rating.json"
+        headers = {
+            "Authorization": f"Bearer {github_token}",
+            "Accept": "application/vnd.github.v3+json"
+        }
+        
+        # Получаем текущий файл
+        response = requests.get(url, headers=headers)
+        sha = response.json().get('sha') if response.status_code == 200 else None
+        
+        # Подготовка данных
+        commit_data = {
+            "message": f"Update rating {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            "content": base64.b64encode(content.encode('utf-8')).decode('utf-8'),
+            "sha": sha
+        }
+        
+        # Отправляем
+        result_put = requests.put(url, headers=headers, json=commit_data)
+        
+        if result_put.status_code in [200, 201]:
+            logger.info(f"✅ Рейтинг сохранен в GitHub: {len(result)} участников")
+            return True
+        else:
+            logger.error(f"❌ Ошибка GitHub API: {result_put.status_code}")
+            return False
+            
     except Exception as e:
-        logger.error(f"❌ Ошибка сохранения рейтинга: {e}")
+        logger.error(f"❌ Ошибка: {e}")
         return False
 
-# ============ ОСТАЛЬНОЙ КОД БОТА ============
-# ... здесь идет весь остальной код (состояния, обработчики и т.д.)
-from datetime import datetime
-from typing import Dict
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, ConversationHandler, MessageHandler, filters
-
-from config import BOT_TOKEN, GROUP_ID, INVITE_LINK, ADMIN_ID, REGULATIONS_LINK, GROUPS_FILE, CHANNEL_LINK
-from database import db
-from flask import Flask, jsonify, request
-from flask_cors import CORS
-import threading
-from rating_db import rating_db
-
-# Настройка логирования
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
-
-# Состояния для разговора
-STEP1_CAPTCHA = 1
-STEP2_REGULATIONS = 2
-ADD_GROUP_NAME = 3
-ADD_GROUP_LINK = 4
-
-# Хранилище для пользователей
-verified_users = {}
-user_states = {}
+# ============ ОСТАЛЬНОЙ КОД ============
 
 # Загрузка групп из файла
 def load_groups() -> Dict[str, str]:
@@ -374,74 +384,8 @@ async def regulations_read(update: Update, context: ContextTypes.DEFAULT_TYPE):
     rating_db.add_or_update_user(user_id, user.username, user.first_name, user.last_name)
     rating_db.update_rating(user_id, 'registration', 100, 'Бонус за регистрацию в сообществе')
     
-    # СОХРАНЯЕМ РЕЙТИНГ В JSON ДЛЯ САЙТА
-    save_rating_to_json()
-    def save_rating_to_github():
-    """Сохраняет рейтинг в GitHub репозиторий"""
-    try:
-        # Получаем список рейтинга
-        rating_list = rating_db.get_rating_list(100)
-        result = []
-        
-        for idx, user in enumerate(rating_list, 1):
-            result.append({
-                'position': idx,
-                'user_id': user[0],
-                'username': user[1] or f"user_{user[0]}",
-                'name': f"{user[2]} {user[3] or ''}".strip(),
-                'points': user[4],
-                'level': user[5],
-                'projects': user[6] + user[7],
-                'investments': user[8],
-                'reputation': user[10] if len(user) > 10 else 0
-            })
-        
-        # Формируем JSON
-        data = {
-            'success': True,
-            'data': result,
-            'total': len(result),
-            'updated_at': datetime.now().isoformat()
-        }
-        
-        content = json.dumps(data, ensure_ascii=False, indent=2)
-        
-        # GitHub API
-        github_token = os.environ.get('GITHUB_TOKEN')
-        if not github_token:
-            logger.warning("GITHUB_TOKEN не установлен")
-            return False
-            
-        url = "https://api.github.com/repos/poverzhukilya-ops/telegram-verification-bot/contents/data/rating.json"
-        headers = {
-            "Authorization": f"Bearer {github_token}",
-            "Accept": "application/vnd.github.v3+json"
-        }
-        
-        # Получаем текущий файл
-        response = requests.get(url, headers=headers)
-        sha = response.json().get('sha') if response.status_code == 200 else None
-        
-        # Подготовка данных
-        commit_data = {
-            "message": f"Update rating {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-            "content": base64.b64encode(content.encode('utf-8')).decode('utf-8'),
-            "sha": sha
-        }
-        
-        # Отправляем
-        result = requests.put(url, headers=headers, json=commit_data)
-        
-        if result.status_code in [200, 201]:
-            logger.info(f"✅ Рейтинг сохранен в GitHub: {len(result)} участников")
-            return True
-        else:
-            logger.error(f"❌ Ошибка GitHub API: {result.status_code}")
-            return False
-            
-    except Exception as e:
-        logger.error(f"❌ Ошибка: {e}")
-        return False
+    # СОХРАНЯЕМ РЕЙТИНГ В GITHUB
+    save_rating_to_github()
     
     db.set_verified(user_id, True)
     db.update_user_status(user_id, "neutral", "Верифицирован через бота")
@@ -630,48 +574,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 💡 *Совет:* Используйте кнопку меню внизу экрана для быстрого доступа к командам!
 """
     await update.message.reply_text(help_text, parse_mode='Markdown')
-
-# ============ API ДЛЯ РЕЙТИНГА ============
-
-api_app = Flask(__name__)
-CORS(api_app, origins=['https://avantyrist1188.netlify.app', 'http://localhost:3000', '*'])
-
-@api_app.route('/api/rating', methods=['GET'])
-def get_rating():
-    try:
-        limit = request.args.get('limit', 50, type=int)
-        rating_list = rating_db.get_rating_list(limit)
-        
-        result = []
-        for idx, user in enumerate(rating_list, 1):
-            result.append({
-                'position': idx,
-                'user_id': user[0],
-                'username': user[1] or f"user_{user[0]}",
-                'name': f"{user[2]} {user[3] or ''}".strip(),
-                'points': user[4],
-                'level': user[5],
-                'projects': user[6] + user[7],
-                'investments': user[8],
-                'reputation': user[10]
-            })
-        
-        return jsonify({'success': True, 'data': result, 'total': len(result)})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@api_app.route('/api/stats', methods=['GET'])
-def get_stats():
-    try:
-        stats = rating_db.get_stats()
-        return jsonify({'success': True, 'data': stats})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-def run_api_server():
-    api_app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
-
-# ============ КОНЕЦ API ============
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Отмена регистрации"""
