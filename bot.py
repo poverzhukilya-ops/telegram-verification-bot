@@ -616,7 +616,7 @@ def main():
     application.add_handler(CommandHandler('help', help_command))
     application.add_error_handler(error_handler)
     
-      print("🤖 Бот Avantyurist запущен!")
+    print("🤖 Бот Avantyurist запущен!")
     print("📊 Лимит вступлений: 3 раза")
     print("📁 Кастомное меню установлено! Кнопка меню внизу экрана")
     print("📋 Команда /groups доступна в меню")
