@@ -11,8 +11,6 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 
 from config import BOT_TOKEN, GROUP_ID, INVITE_LINK, ADMIN_ID, REGULATIONS_LINK, GROUPS_FILE, CHANNEL_LINK
 from database import db
-from flask import Flask, jsonify, request
-from flask_cors import CORS
 import threading
 from rating_db import rating_db
 
