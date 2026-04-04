@@ -1,7 +1,27 @@
 # bot.py
-from datetime import datetime
+import logging
 import json
 import os
+from datetime import datetime
+from typing import Dict
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, ConversationHandler, MessageHandler, filters
+
+from config import BOT_TOKEN, GROUP_ID, INVITE_LINK, ADMIN_ID, REGULATIONS_LINK, GROUPS_FILE, CHANNEL_LINK
+from database import db
+from flask import Flask, jsonify, request
+from flask_cors import CORS
+import threading
+from rating_db import rating_db
+
+# Настройка логирования
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
+# ============ ФУНКЦИЯ СОХРАНЕНИЯ РЕЙТИНГА ============
 def save_rating_to_json():
     """Сохраняет рейтинг в JSON файл для сайта"""
     try:
@@ -39,6 +59,9 @@ def save_rating_to_json():
     except Exception as e:
         logger.error(f"❌ Ошибка сохранения рейтинга: {e}")
         return False
+
+# ============ ОСТАЛЬНОЙ КОД БОТА ============
+# ... здесь идет весь остальной код (состояния, обработчики и т.д.)
 from datetime import datetime
 from typing import Dict
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
