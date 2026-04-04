@@ -630,10 +630,7 @@ def main():
     print("📍 API доступен по адресу: http://localhost:5000/api/rating")
     
     application.run_polling()
-
 if __name__ == '__main__':
-    main()
-    if __name__ == '__main__':
     # Если передан аргумент --api, запускаем только API
     if len(sys.argv) > 1 and sys.argv[1] == '--api':
         run_api_server()
