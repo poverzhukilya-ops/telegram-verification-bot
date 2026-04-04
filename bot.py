@@ -2,6 +2,43 @@
 import logging
 import json
 import os
+def save_rating_to_json():
+    """Сохраняет рейтинг в JSON файл для сайта"""
+    try:
+        # Создаем папку data, если её нет
+        os.makedirs('data', exist_ok=True)
+        
+        # Получаем список рейтинга
+        rating_list = rating_db.get_rating_list(100)
+        result = []
+        
+        for idx, user in enumerate(rating_list, 1):
+            result.append({
+                'position': idx,
+                'user_id': user[0],
+                'username': user[1] or f"user_{user[0]}",
+                'name': f"{user[2]} {user[3] or ''}".strip(),
+                'points': user[4],
+                'level': user[5],
+                'projects': user[6] + user[7],
+                'investments': user[8],
+                'reputation': user[10] if len(user) > 10 else 0
+            })
+        
+        # Сохраняем в JSON файл
+        with open('data/rating.json', 'w', encoding='utf-8') as f:
+            json.dump({
+                'success': True, 
+                'data': result, 
+                'total': len(result),
+                'updated_at': datetime.now().isoformat()
+            }, f, ensure_ascii=False, indent=2)
+        
+        logger.info(f"✅ Рейтинг сохранен в JSON: {len(result)} участников")
+        return True
+    except Exception as e:
+        logger.error(f"❌ Ошибка сохранения рейтинга: {e}")
+        return False
 from datetime import datetime
 from typing import Dict
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
@@ -311,6 +348,9 @@ async def regulations_read(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Добавляем в рейтинг
     rating_db.add_or_update_user(user_id, user.username, user.first_name, user.last_name)
     rating_db.update_rating(user_id, 'registration', 100, 'Бонус за регистрацию в сообществе')
+    
+    # СОХРАНЯЕМ РЕЙТИНГ В JSON ДЛЯ САЙТА
+    save_rating_to_json()
     
     db.set_verified(user_id, True)
     db.update_user_status(user_id, "neutral", "Верифицирован через бота")
