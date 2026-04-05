@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Dict, Optional
 from collections import defaultdict
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, ConversationHandler, MessageHandler, filters, MessageReactionHandler
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, ConversationHandler, MessageHandler, filters, TypeHandler
 
 from config import BOT_TOKEN, GROUP_ID, INVITE_LINK, ADMIN_ID, REGULATIONS_LINK, GROUPS_FILE, CHANNEL_LINK
 from database import db
@@ -979,8 +979,8 @@ def main():
     
     application = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
     
-    # Обработчик реакций (ДОБАВИТЬ ЭТУ СТРОКУ!)
-    application.add_handler(MessageReactionHandler(handle_message_reaction))
+    # Используем TypeHandler вместо MessageReactionHandler
+    application.add_handler(TypeHandler(Update, handle_message_reaction))
     
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
@@ -1028,15 +1028,8 @@ def main():
     
     print("🤖 Бот Avantyurist запущен!")
     print("📊 Лимит вступлений: 3 раза")
-    print("📁 Кастомное меню установлено! Кнопка меню внизу экрана")
-    print("📋 Команда /groups доступна в меню")
     print("👍 Система лайков/дизлайков активна!")
     print("   Позитивные реакции: 👍, ❤️, 🔥 (+10 очков)")
     print("   Негативные реакции: 👎, 💩, 🤮 (-10 очков)")
-    print(f"🔗 Ссылка на группу: {INVITE_LINK}")
-    print(f"📖 Регламент: {REGULATIONS_LINK}")
     
     application.run_polling()
-
-if __name__ == '__main__':
-    main()
