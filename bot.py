@@ -960,9 +960,8 @@ def main():
     
     application = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
     
-    # Добавляем обработчик реакций (используем MessageHandler для совместимости)
-   from telegram.ext import TypeHandler
-application.add_handler(TypeHandler(Update, handle_message_reaction))
+    # Добавляем обработчик реакций через TypeHandler
+    application.add_handler(TypeHandler(Update, handle_message_reaction))
     
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
@@ -1018,6 +1017,5 @@ application.add_handler(TypeHandler(Update, handle_message_reaction))
     print(f"📖 Регламент: {REGULATIONS_LINK}")
     
     application.run_polling()
-
 if __name__ == '__main__':
     main()
