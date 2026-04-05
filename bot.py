@@ -792,4 +792,231 @@ async def refresh_projects(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_projects_list(chat_id, context)
 
 async def add_group_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Начало добавления группы (только для админа
+    """Начало добавления группы (только для админа)"""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    
+    if user_id != ADMIN_ID:
+        await query.edit_message_text(
+            "🚫 *Доступ запрещен!*\n\nТолько администратор может добавлять группы.",
+            parse_mode='Markdown'
+        )
+        return ConversationHandler.END
+    
+    await query.edit_message_text(
+        "📝 *Добавление новой группы проекта*\n\nВведите название группы:",
+        parse_mode='Markdown'
+    )
+    
+    return ADD_GROUP_NAME
+
+async def add_group_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Получение названия группы"""
+    group_name = update.message.text.strip()
+    context.user_data['new_group_name'] = group_name
+    
+    await update.message.reply_text(
+        f"📝 Название: *{group_name}*\n\nТеперь отправьте ссылку-приглашение в группу:",
+        parse_mode='Markdown'
+    )
+    
+    return ADD_GROUP_LINK
+
+async def add_group_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Получение ссылки и сохранение группы"""
+    group_link = update.message.text.strip()
+    group_name = context.user_data.get('new_group_name')
+    
+    if not group_name:
+        await update.message.reply_text("❌ Ошибка! Название группы не найдено.\nПопробуйте снова через меню.")
+        return ConversationHandler.END
+    
+    if not (group_link.startswith('https://t.me/') or group_link.startswith('http://t.me/')):
+        await update.message.reply_text(
+            "❌ Неверный формат ссылки!\n\nСсылка должна быть вида: https://t.me/+XXXXXXXXXX\nПопробуйте снова:",
+            parse_mode='Markdown'
+        )
+        return ADD_GROUP_LINK
+    
+    groups = load_groups()
+    groups[group_name] = group_link
+    save_groups(groups)
+    
+    await update.message.reply_text(
+        f"✅ *Группа успешно добавлена!*\n\n📁 Название: {group_name}\n🔗 Ссылка: {group_link}\n\nТеперь она доступна в списке групп (/groups).",
+        parse_mode='Markdown'
+    )
+    
+    context.user_data.clear()
+    return ConversationHandler.END
+
+async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Проверка статуса"""
+    user_id = update.effective_user.id
+    in_group = await check_user_in_group(context, user_id)
+    
+    if user_id in verified_users and in_group:
+        data = verified_users[user_id]
+        join_count = data.get('join_count', 1)
+        remaining = 3 - join_count
+        
+        await update.message.reply_text(
+            f"✅ *Вы верифицированы и в группе!*\n\n📅 Дата: {data['verified_at']}\n📖 Регламент: ✅ Ознакомились\n🔄 Использовано попыток: {join_count} из 3\n📊 Осталось: {remaining}\n\n📁 Используйте команду /groups для просмотра групп проектов.\n\n📊 Команда /my_rating - посмотреть свой рейтинг",
+            parse_mode='Markdown'
+        )
+    elif user_id in verified_users:
+        join_count = verified_users[user_id].get('join_count', 1)
+        remaining = 3 - join_count
+        
+        if remaining > 0:
+            await update.message.reply_text(
+                f"⚠️ *Вы вышли из группы*\n\n🔄 Использовано попыток: {join_count} из 3\n📊 Осталось попыток: {remaining}\n\nОтправьте /start для повторной регистрации.",
+                parse_mode='Markdown'
+            )
+        else:
+            await update.message.reply_text(
+                "🚫 *Доступ запрещен!*\n\nВы использовали все 3 попытки вступления.\nОбратитесь к администратору.",
+                parse_mode='Markdown'
+            )
+    else:
+        await update.message.reply_text(
+            "❌ *Вы ещё не прошли верификацию.*\n\nОтправьте /start для начала регистрации.",
+            parse_mode='Markdown'
+        )
+
+async def rules(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Отправка ссылки на регламент"""
+    keyboard = [[InlineKeyboardButton("📖 Регламент", url=REGULATIONS_LINK)]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        "📜 *Ознакомьтесь с регламентом:*",
+        parse_mode='Markdown',
+        reply_markup=reply_markup
+    )
+
+async def about(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Информация о сообществе"""
+    await update.message.reply_text(
+        "🌟 *Avantyurist* — сообщество инициативных людей.\n\nСовместные проекты, инвестиции, развитие.\n\n" + f"[Регламент]({REGULATIONS_LINK})",
+        parse_mode='Markdown',
+        disable_web_page_preview=True
+    )
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Справка"""
+    help_text = """
+📖 *Команды:*
+
+/start — регистрация
+/status — проверить статус
+/groups — список групп проектов
+/my_rating — мой рейтинг и статистика
+/message_stats — статистика сообщения (ответом)
+/rules — регламент
+/about — о сообществе
+/help — справка
+
+💡 *Совет:* Используйте кнопку меню внизу экрана для быстрого доступа к командам!
+"""
+    await update.message.reply_text(help_text, parse_mode='Markdown')
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Отмена регистрации"""
+    user_id = update.effective_user.id
+    await clear_user_data(user_id, context)
+    
+    await update.message.reply_text(
+        "❌ Регистрация отменена.\nОтправьте /start для повторной попытки."
+    )
+    return ConversationHandler.END
+
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка ошибок"""
+    logger.error(f"Ошибка: {context.error}")
+
+async def post_init(application: Application):
+    """Функция, которая выполняется после запуска бота"""
+    commands = [
+        BotCommand("start", "🚀 Начать регистрацию"),
+        BotCommand("groups", "📁 Группы проектов"),
+        BotCommand("my_rating", "📊 Мой рейтинг"),
+        BotCommand("message_stats", "📈 Статистика сообщения"),
+        BotCommand("status", "✅ Проверить статус"),
+        BotCommand("rules", "📖 Регламент"),
+        BotCommand("about", "ℹ️ О сообществе"),
+        BotCommand("help", "🆘 Помощь"),
+    ]
+    
+    await application.bot.set_my_commands(commands)
+    logger.info("✅ Кастомное меню команд установлено!")
+
+def main():
+    """Запуск бота"""
+    # Инициализируем базу данных реакций
+    init_reactions_db()
+    
+    application = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
+    
+    # Добавляем обработчик реакций (используем MessageHandler для совместимости)
+    application.add_handler(MessageHandler(filters.StatusUpdate.MESSAGE_REACTION, handle_message_reaction))
+    
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler('start', start)],
+        states={
+            STEP1_CAPTCHA: [
+                CallbackQueryHandler(start_step1, pattern='start_step1'),
+                CallbackQueryHandler(captcha_passed, pattern='captcha_passed'),
+            ],
+            STEP2_REGULATIONS: [
+                CallbackQueryHandler(regulations_read, pattern='regulations_read'),
+            ],
+        },
+        fallbacks=[
+            CommandHandler('cancel', cancel),
+            CommandHandler('start', start),
+        ],
+        allow_reentry=True,
+    )
+    
+    add_group_handler = ConversationHandler(
+        entry_points=[CallbackQueryHandler(add_group_start, pattern='add_group')],
+        states={
+            ADD_GROUP_NAME: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, add_group_name)
+            ],
+            ADD_GROUP_LINK: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, add_group_link)
+            ],
+        },
+        fallbacks=[CommandHandler('cancel', cancel)],
+        allow_reentry=True,
+    )
+    
+    application.add_handler(conv_handler)
+    application.add_handler(add_group_handler)
+    application.add_handler(CallbackQueryHandler(refresh_projects, pattern='refresh_projects'))
+    application.add_handler(CommandHandler('status', status))
+    application.add_handler(CommandHandler('groups', groups_command))
+    application.add_handler(CommandHandler('my_rating', my_rating_command))
+    application.add_handler(CommandHandler('message_stats', message_stats_command))
+    application.add_handler(CommandHandler('rules', rules))
+    application.add_handler(CommandHandler('about', about))
+    application.add_handler(CommandHandler('help', help_command))
+    application.add_error_handler(error_handler)
+    
+    print("🤖 Бот Avantyurist запущен!")
+    print("📊 Лимит вступлений: 3 раза")
+    print("📁 Кастомное меню установлено! Кнопка меню внизу экрана")
+    print("👍 Система лайков/дизлайков активна!")
+    print("   Позитивные реакции: 👍, ❤️, 🔥 (+10 очков)")
+    print("   Негативные реакции: 👎, 💩, 🤮 (-10 очков)")
+    print(f"🔗 Ссылка на группу: {INVITE_LINK}")
+    print(f"📖 Регламент: {REGULATIONS_LINK}")
+    
+    application.run_polling()
+
+if __name__ == '__main__':
+    main()
