@@ -955,13 +955,7 @@ async def post_init(application: Application):
 
 def main():
     """Запуск бота"""
-    # Инициализируем базу данных реакций
-    init_reactions_db()
-    
     application = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
-    
-    # Добавляем обработчик реакций через TypeHandler
-    application.add_handler(TypeHandler(Update, handle_message_reaction))
     
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
@@ -1000,8 +994,6 @@ def main():
     application.add_handler(CallbackQueryHandler(refresh_projects, pattern='refresh_projects'))
     application.add_handler(CommandHandler('status', status))
     application.add_handler(CommandHandler('groups', groups_command))
-    application.add_handler(CommandHandler('my_rating', my_rating_command))
-    application.add_handler(CommandHandler('message_stats', message_stats_command))
     application.add_handler(CommandHandler('rules', rules))
     application.add_handler(CommandHandler('about', about))
     application.add_handler(CommandHandler('help', help_command))
@@ -1009,13 +1001,10 @@ def main():
     
     print("🤖 Бот Avantyurist запущен!")
     print("📊 Лимит вступлений: 3 раза")
-    print("📁 Кастомное меню установлено! Кнопка меню внизу экрана")
-    print("👍 Система лайков/дизлайков активна!")
-    print("   Позитивные реакции: 👍, ❤️, 🔥 (+10 очков)")
-    print("   Негативные реакции: 👎, 💩, 🤮 (-10 очков)")
     print(f"🔗 Ссылка на группу: {INVITE_LINK}")
     print(f"📖 Регламент: {REGULATIONS_LINK}")
     
     application.run_polling()
+
 if __name__ == '__main__':
     main()
