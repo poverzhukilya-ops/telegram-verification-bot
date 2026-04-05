@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Dict, Optional
 from collections import defaultdict
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, ConversationHandler, MessageHandler, filters
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, ConversationHandler, MessageHandler, filters, TypeHandler
 
 from config import BOT_TOKEN, GROUP_ID, INVITE_LINK, ADMIN_ID, REGULATIONS_LINK, GROUPS_FILE, CHANNEL_LINK
 from database import db
@@ -961,7 +961,8 @@ def main():
     application = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
     
     # Добавляем обработчик реакций (используем MessageHandler для совместимости)
-    application.add_handler(MessageHandler(filters.StatusUpdate.MESSAGE_REACTION, handle_message_reaction))
+   from telegram.ext import TypeHandler
+application.add_handler(TypeHandler(Update, handle_message_reaction))
     
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
