@@ -4,11 +4,8 @@ import json
 import os
 import requests
 import base64
-import sqlite3
-import time
 from datetime import datetime
-from typing import Dict, Optional
-from collections import defaultdict
+from typing import Dict
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, ConversationHandler, MessageHandler, filters
 
@@ -16,6 +13,7 @@ from config import BOT_TOKEN, GROUP_ID, INVITE_LINK, ADMIN_ID, REGULATIONS_LINK,
 from database import db
 import threading
 from rating_db import rating_db
+
 # Настройка логирования
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -32,170 +30,6 @@ ADD_GROUP_LINK = 4
 # Хранилище для пользователей
 verified_users = {}
 user_states = {}
-
-# ============ НАСТРОЙКИ СИСТЕМЫ РЕАКЦИЙ ============
-# Позитивные эмодзи (3 штуки)
-POSITIVE_EMOJIS = {'👍', '❤️', '🔥'}
-# Негативные эмодзи (3 штуки)
-NEGATIVE_EMOJIS = {'👎', '💩', '🤮'}
-
-# Все поддерживаемые эмодзи
-ALL_REACTION_EMOJIS = POSITIVE_EMOJIS.union(NEGATIVE_EMOJIS)
-
-# Защита от спама (user_id -> время последней реакции)
-user_reaction_cooldown = defaultdict(float)
-
-# ============ ФУНКЦИИ ДЛЯ РАБОТЫ С РЕАКЦИЯМИ ============
-
-def init_reactions_db():
-    """Инициализация базы данных для реакций"""
-    try:
-        conn = sqlite3.connect('rating.db')
-        cursor = conn.cursor()
-        
-        # Таблица для хранения реакций пользователей на сообщения
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS user_reactions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                message_id INTEGER,
-                reaction_type TEXT,
-                created_at TIMESTAMP,
-                updated_at TIMESTAMP,
-                UNIQUE(user_id, message_id)
-            )
-        ''')
-        
-        # Таблица для хранения информации о сообщениях (автор)
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS rated_messages (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                message_id INTEGER UNIQUE,
-                author_id INTEGER,
-                created_at TIMESTAMP
-            )
-        ''')
-        
-        # Индексы для быстрого поиска
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_message_reactions ON user_reactions(message_id)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_user_reactions ON user_reactions(user_id)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_rated_messages ON rated_messages(message_id)')
-        
-        conn.commit()
-        conn.close()
-        logger.info("✅ База данных реакций инициализирована")
-    except Exception as e:
-        logger.error(f"❌ Ошибка инициализации БД реакций: {e}")
-
-def get_user_reaction_on_message(user_id: int, message_id: int) -> Optional[str]:
-    """Получить реакцию пользователя на сообщение (None если нет реакции)"""
-    try:
-        conn = sqlite3.connect('rating.db')
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT reaction_type FROM user_reactions 
-            WHERE user_id = ? AND message_id = ?
-        ''', (user_id, message_id))
-        result = cursor.fetchone()
-        conn.close()
-        return result[0] if result else None
-    except Exception as e:
-        logger.error(f"Ошибка получения реакции: {e}")
-        return None
-
-def save_user_reaction(user_id: int, message_id: int, reaction_type: str):
-    """Сохранить или обновить реакцию пользователя"""
-    try:
-        conn = sqlite3.connect('rating.db')
-        cursor = conn.cursor()
-        
-        now = datetime.now()
-        cursor.execute('''
-            INSERT INTO user_reactions (user_id, message_id, reaction_type, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(user_id, message_id) 
-            DO UPDATE SET reaction_type = ?, updated_at = ?
-        ''', (user_id, message_id, reaction_type, now, now, reaction_type, now))
-        
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        logger.error(f"Ошибка сохранения реакции: {e}")
-
-def delete_user_reaction(user_id: int, message_id: int):
-    """Удалить реакцию пользователя"""
-    try:
-        conn = sqlite3.connect('rating.db')
-        cursor = conn.cursor()
-        cursor.execute('''
-            DELETE FROM user_reactions WHERE user_id = ? AND message_id = ?
-        ''', (user_id, message_id))
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        logger.error(f"Ошибка удаления реакции: {e}")
-
-def save_message_author(message_id: int, author_id: int):
-    """Сохраняет автора сообщения"""
-    try:
-        conn = sqlite3.connect('rating.db')
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT OR IGNORE INTO rated_messages (message_id, author_id, created_at)
-            VALUES (?, ?, ?)
-        ''', (message_id, author_id, datetime.now()))
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        logger.error(f"Ошибка сохранения автора сообщения: {e}")
-
-def get_message_author(message_id: int) -> Optional[int]:
-    """Получить автора сообщения"""
-    try:
-        conn = sqlite3.connect('rating.db')
-        cursor = conn.cursor()
-        cursor.execute('SELECT author_id FROM rated_messages WHERE message_id = ?', (message_id,))
-        result = cursor.fetchone()
-        conn.close()
-        return result[0] if result else None
-    except Exception as e:
-        logger.error(f"Ошибка получения автора: {e}")
-        return None
-
-def get_message_reaction_score(message_id: int) -> tuple:
-    """Получить суммарный счёт сообщения (лайки, дизлайки, общий счёт)"""
-    try:
-        conn = sqlite3.connect('rating.db')
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT 
-                COUNT(CASE WHEN reaction_type IN ('👍', '❤️', '🔥') THEN 1 END) as likes,
-                COUNT(CASE WHEN reaction_type IN ('👎', '💩', '🤮') THEN 1 END) as dislikes
-            FROM user_reactions
-            WHERE message_id = ?
-        ''', (message_id,))
-        
-        result = cursor.fetchone()
-        conn.close()
-        
-        likes = result[0] or 0
-        dislikes = result[1] or 0
-        total_score = (likes * 10) - (dislikes * 10)
-        
-        return likes, dislikes, total_score
-    except Exception as e:
-        logger.error(f"Ошибка получения счёта сообщения: {e}")
-        return 0, 0, 0
-
-def update_user_rating_reaction(user_id: int, delta: int, reason: str):
-    """Обновляет рейтинг пользователя через rating_db"""
-    try:
-        # Используем существующую функцию rating_db.update_rating
-        rating_db.update_rating(user_id, delta, reason)
-        logger.info(f"📊 Рейтинг пользователя {user_id}: {delta:+d} очков. Причина: {reason}")
-    except Exception as e:
-        logger.error(f"Ошибка обновления рейтинга: {e}")
 
 # ============ ФУНКЦИЯ СОХРАНЕНИЯ РЕЙТИНГА В GITHUB ============
 def save_rating_to_github():
@@ -265,208 +99,7 @@ def save_rating_to_github():
         logger.error(f"❌ Ошибка: {e}")
         return False
 
-# ============ ОБРАБОТЧИК РЕАКЦИЙ ============
-
-async def handle_message_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик реакций на сообщения"""
-    try:
-        # Получаем данные о реакции
-        reaction_update = update.message_reaction
-        if not reaction_update:
-            return
-        
-        message_id = reaction_update.message_id
-        chat_id = reaction_update.chat.id
-        reactor_id = reaction_update.user_id  # Кто поставил реакцию
-        
-        # Игнорируем реакции от бота
-        if reactor_id == context.bot.id:
-            return
-        
-        # Получаем сообщение и его автора
-        try:
-            message = await context.bot.get_messages(chat_id, message_id)
-            if not message or not message.from_user:
-                return
-            author_id = message.from_user.id
-        except Exception as e:
-            logger.error(f"❌ Ошибка получения сообщения {message_id}: {e}")
-            return
-        
-        # Нельзя оценивать свои сообщения
-        if reactor_id == author_id:
-            # Удаляем реакцию
-            try:
-                await context.bot.delete_message_reaction(chat_id, message_id, reactor_id)
-            except:
-                pass
-            return
-        
-        # Сохраняем автора сообщения в БД (если ещё не сохранён)
-        save_message_author(message_id, author_id)
-        
-        # Защита от спама (не чаще 1 реакции в 2 секунды)
-        current_time = time.time()
-        if current_time - user_reaction_cooldown[reactor_id] < 2:
-            return
-        user_reaction_cooldown[reactor_id] = current_time
-        
-        # Определяем тип реакции
-        if not reaction_update.new_reactions:
-            # Пользователь убрал реакцию - откатываем очки
-            old_reaction = get_user_reaction_on_message(reactor_id, message_id)
-            if old_reaction:
-                # Удаляем реакцию из БД
-                delete_user_reaction(reactor_id, message_id)
-                
-                # Откатываем очки автора
-                if old_reaction in POSITIVE_EMOJIS:
-                    update_user_rating_reaction(author_id, -10, f"Пользователь {reactor_id} убрал лайк с сообщения {message_id}")
-                    logger.info(f"➖ Лайк убран с сообщения {message_id}, у автора -10 очков")
-                elif old_reaction in NEGATIVE_EMOJIS:
-                    update_user_rating_reaction(author_id, +10, f"Пользователь {reactor_id} убрал дизлайк с сообщения {message_id}")
-                    logger.info(f"➕ Дизлайк убран с сообщения {message_id}, у автора +10 очков")
-            return
-        
-        # Получаем новую реакцию
-        reaction_emoji = reaction_update.new_reactions[0].emoji
-        
-        # Проверяем, поддерживается ли реакция
-        if reaction_emoji not in ALL_REACTION_EMOJIS:
-            # Удаляем неподдерживаемую реакцию
-            try:
-                await context.bot.delete_message_reaction(chat_id, message_id, reactor_id)
-            except:
-                pass
-            return
-        
-        # Определяем тип и количество очков
-        is_positive = reaction_emoji in POSITIVE_EMOJIS
-        new_delta = 10 if is_positive else -10
-        
-        # Проверяем, была ли уже реакция от этого пользователя
-        old_reaction = get_user_reaction_on_message(reactor_id, message_id)
-        
-        if old_reaction:
-            old_is_positive = old_reaction in POSITIVE_EMOJIS
-            old_delta = 10 if old_is_positive else -10
-            
-            if old_reaction == reaction_emoji:
-                # Та же реакция - игнорируем
-                return
-            else:
-                # Пользователь меняет реакцию (лайк на дизлайк или наоборот)
-                # Сначала откатываем старую
-                update_user_rating_reaction(author_id, -old_delta, f"Пользователь {reactor_id} изменил реакцию на сообщении {message_id}")
-                # Затем начисляем новую
-                update_user_rating_reaction(author_id, new_delta, f"Пользователь {reactor_id} изменил реакцию на сообщении {message_id}")
-                
-                # Обновляем реакцию в БД
-                save_user_reaction(reactor_id, message_id, reaction_emoji)
-                
-                logger.info(f"🔄 Реакция изменена! Теперь {'+10' if is_positive else '-10'} очков автору {author_id}")
-                return
-        
-        # Новая реакция - сохраняем и начисляем очки
-        save_user_reaction(reactor_id, message_id, reaction_emoji)
-        update_user_rating_reaction(author_id, new_delta, f"Пользователь {reactor_id} поставил {reaction_emoji} на сообщение {message_id}")
-        
-        # Сохраняем рейтинг в GitHub после каждого изменения (но не слишком часто)
-        # Для оптимизации можно сохранять раз в минуту, но для простоты сохраняем сразу
-        save_rating_to_github()
-        
-        # Получаем общую статистику сообщения для лога
-        likes, dislikes, total = get_message_reaction_score(message_id)
-        logger.info(f"📊 РЕАКЦИЯ: {reaction_emoji} от {reactor_id} на сообщение {message_id} автора {author_id} -> {new_delta:+d} очков (Всего: 👍{likes} 👎{dislikes} = {total:+d})")
-        
-    except Exception as e:
-        logger.error(f"❌ Ошибка в обработчике реакций: {e}")
-
-# ============ КОМАНДЫ ДЛЯ РАБОТЫ С РЕАКЦИЯМИ ============
-
-async def my_rating_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Команда /my_rating - показать свой рейтинг и статистику реакций"""
-    user_id = update.effective_user.id
-    
-    try:
-        # Получаем рейтинг через rating_db
-        rating = rating_db.get_user_rating(user_id)
-        
-        # Получаем статистику реакций из БД
-        conn = sqlite3.connect('rating.db')
-        cursor = conn.cursor()
-        
-        # Статистика поставленных реакций
-        cursor.execute('''
-            SELECT 
-                COUNT(CASE WHEN reaction_type IN ('👍', '❤️', '🔥') THEN 1 END) as likes_given,
-                COUNT(CASE WHEN reaction_type IN ('👎', '💩', '🤮') THEN 1 END) as dislikes_given
-            FROM user_reactions
-            WHERE user_id = ?
-        ''', (user_id,))
-        
-        given = cursor.fetchone()
-        likes_given = given[0] or 0
-        dislikes_given = given[1] or 0
-        
-        # Статистика полученных реакций
-        cursor.execute('''
-            SELECT 
-                COUNT(CASE WHEN reaction_type IN ('👍', '❤️', '🔥') THEN 1 END) as likes_received,
-                COUNT(CASE WHEN reaction_type IN ('👎', '💩', '🤮') THEN 1 END) as dislikes_received
-            FROM user_reactions ur
-            JOIN rated_messages rm ON ur.message_id = rm.message_id
-            WHERE rm.author_id = ?
-        ''', (user_id,))
-        
-        received = cursor.fetchone()
-        likes_received = received[0] or 0
-        dislikes_received = received[1] or 0
-        
-        conn.close()
-        
-        await update.message.reply_text(
-            f"📊 *Ваш рейтинг и статистика*\n\n"
-            f"🏆 *Рейтинг:* {rating} очков\n\n"
-            f"📤 *Вы оценили других:*\n"
-            f"   👍 Лайков: {likes_given}\n"
-            f"   👎 Дизлайков: {dislikes_given}\n\n"
-            f"📥 *Другие оценили вас:*\n"
-            f"   👍 Лайков: {likes_received} (+{likes_received * 10} очков)\n"
-            f"   👎 Дизлайков: {dislikes_received} (-{dislikes_received * 10} очков)\n\n"
-            f"💡 *Как работает система:*\n"
-            f"• Каждый лайк = +10 очков автору\n"
-            f"• Каждый дизлайк = -10 очков автору\n"
-            f"• Один пользователь = одна оценка на сообщение\n"
-            f"• Можно изменить свою оценку",
-            parse_mode='Markdown'
-        )
-    except Exception as e:
-        logger.error(f"Ошибка в my_rating_command: {e}")
-        await update.message.reply_text("❌ Ошибка получения статистики")
-
-async def message_stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Команда /message_stats - показать статистику сообщения (по reply)"""
-    if not update.message.reply_to_message:
-        await update.message.reply_text("❌ Ответьте на сообщение, чтобы увидеть его статистику!")
-        return
-    
-    target_message = update.message.reply_to_message
-    message_id = target_message.message_id
-    
-    likes, dislikes, total = get_message_reaction_score(message_id)
-    
-    await update.message.reply_text(
-        f"📊 *Статистика сообщения*\n\n"
-        f"👤 Автор: {target_message.from_user.first_name}\n"
-        f"👍 Лайков: {likes} (+{likes * 10} очков)\n"
-        f"👎 Дизлайков: {dislikes} (-{dislikes * 10} очков)\n"
-        f"📈 Общий счёт: {total:+d} очков\n\n"
-        f"📝 Текст: {target_message.text[:100] if target_message.text else '[медиа/файл]'}",
-        parse_mode='Markdown'
-    )
-
-# ============ ОСТАЛЬНОЙ КОД (БЕЗ ИЗМЕНЕНИЙ) ============
+# ============ ОСТАЛЬНОЙ КОД ============
 
 # Загрузка групп из файла
 def load_groups() -> Dict[str, str]:
@@ -756,7 +389,7 @@ async def regulations_read(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.update_user_status(user_id, "neutral", "Верифицирован через бота")
     
     await query.edit_message_text(
-        "✅ *Отлично! Верификация пройдена!*\n\nТеперь вы можете вступить в сообщество.\n\n*Внимание!* У вас есть 3 попытки вступления.\nПосле 3-го выхода доступ будет закрыт.\n\nИспользуйте кнопку меню внизу экрана или команду /groups для просмотра групп проектов.\n\n📊 Команда /my_rating - посмотреть свой рейтинг и статистику реакций",
+        "✅ *Отлично! Верификация пройдена!*\n\nТеперь вы можете вступить в сообщество.\n\n*Внимание!* У вас есть 3 попытки вступления.\nПосле 3-го выхода доступ будет закрыт.\n\nИспользуйте кнопку меню внизу экрана или команду /groups для просмотра групп проектов.",
         parse_mode='Markdown'
     )
     
@@ -882,7 +515,7 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         remaining = 3 - join_count
         
         await update.message.reply_text(
-            f"✅ *Вы верифицированы и в группе!*\n\n📅 Дата: {data['verified_at']}\n📖 Регламент: ✅ Ознакомились\n🔄 Использовано попыток: {join_count} из 3\n📊 Осталось: {remaining}\n\n📁 Используйте команду /groups для просмотра групп проектов.\n\n📊 Команда /my_rating - посмотреть свой рейтинг",
+            f"✅ *Вы верифицированы и в группе!*\n\n📅 Дата: {data['verified_at']}\n📖 Регламент: ✅ Ознакомились\n🔄 Использовано попыток: {join_count} из 3\n📊 Осталось: {remaining}\n\n📁 Используйте команду /groups для просмотра групп проектов.",
             parse_mode='Markdown'
         )
     elif user_id in verified_users:
@@ -932,8 +565,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 /start — регистрация
 /status — проверить статус
 /groups — список групп проектов
-/my_rating — мой рейтинг и статистика
-/message_stats — статистика сообщения (ответом)
 /rules — регламент
 /about — о сообществе
 /help — справка
@@ -961,9 +592,7 @@ async def post_init(application: Application):
     commands = [
         BotCommand("start", "🚀 Начать регистрацию"),
         BotCommand("groups", "📁 Группы проектов"),
-        BotCommand("my_rating", "📊 Мой рейтинг"),
-        BotCommand("message_stats", "📈 Статистика сообщения"),
-        BotCommand("status", "✅ Проверить статус"),
+        BotCommand("status", "📊 Проверить статус"),
         BotCommand("rules", "📖 Регламент"),
         BotCommand("about", "ℹ️ О сообществе"),
         BotCommand("help", "🆘 Помощь"),
@@ -974,13 +603,7 @@ async def post_init(application: Application):
 
 def main():
     """Запуск бота"""
-    # Инициализируем базу данных реакций
-    init_reactions_db()
-    
     application = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
-    
-    # Используем TypeHandler вместо MessageReactionHandler
-    application.add_handler(TypeHandler(Update, handle_message_reaction))
     
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
@@ -1019,8 +642,6 @@ def main():
     application.add_handler(CallbackQueryHandler(refresh_projects, pattern='refresh_projects'))
     application.add_handler(CommandHandler('status', status))
     application.add_handler(CommandHandler('groups', groups_command))
-    application.add_handler(CommandHandler('my_rating', my_rating_command))
-    application.add_handler(CommandHandler('message_stats', message_stats_command))
     application.add_handler(CommandHandler('rules', rules))
     application.add_handler(CommandHandler('about', about))
     application.add_handler(CommandHandler('help', help_command))
@@ -1028,8 +649,12 @@ def main():
     
     print("🤖 Бот Avantyurist запущен!")
     print("📊 Лимит вступлений: 3 раза")
-    print("👍 Система лайков/дизлайков активна!")
-    print("   Позитивные реакции: 👍, ❤️, 🔥 (+10 очков)")
-    print("   Негативные реакции: 👎, 💩, 🤮 (-10 очков)")
+    print("📁 Кастомное меню установлено! Кнопка меню внизу экрана")
+    print("📋 Команда /groups доступна в меню")
+    print(f"🔗 Ссылка на группу: {INVITE_LINK}")
+    print(f"📖 Регламент: {REGULATIONS_LINK}")
     
     application.run_polling()
+
+if __name__ == '__main__':
+    main()
