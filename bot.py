@@ -11,6 +11,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 
 from config import BOT_TOKEN, GROUP_ID, INVITE_LINK, ADMIN_ID, REGULATIONS_LINK, GROUPS_FILE, CHANNEL_LINK
 from database import db
+import threading
 from rating_db import rating_db
 
 # Настройка логирования
@@ -34,6 +35,7 @@ user_states = {}
 def save_rating_to_github():
     """Сохраняет рейтинг в GitHub репозиторий"""
     try:
+        # Получаем список рейтинга
         rating_list = rating_db.get_rating_list(100)
         result = []
         
@@ -50,6 +52,7 @@ def save_rating_to_github():
                 'reputation': user[10] if len(user) > 10 else 0
             })
         
+        # Формируем JSON
         data = {
             'success': True,
             'data': result,
@@ -59,8 +62,10 @@ def save_rating_to_github():
         
         content = json.dumps(data, ensure_ascii=False, indent=2)
         
+        # GitHub API
         github_token = os.environ.get('GITHUB_TOKEN')
         if not github_token:
+            logger.warning("GITHUB_TOKEN не установлен")
             return False
             
         url = "https://api.github.com/repos/poverzhukilya-ops/telegram-verification-bot/contents/data/rating.json"
@@ -69,19 +74,22 @@ def save_rating_to_github():
             "Accept": "application/vnd.github.v3+json"
         }
         
+        # Получаем текущий файл
         response = requests.get(url, headers=headers)
         sha = response.json().get('sha') if response.status_code == 200 else None
         
+        # Подготовка данных
         commit_data = {
             "message": f"Update rating {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
             "content": base64.b64encode(content.encode('utf-8')).decode('utf-8'),
             "sha": sha
         }
         
+        # Отправляем
         result_put = requests.put(url, headers=headers, json=commit_data)
         
         if result_put.status_code in [200, 201]:
-            logger.info(f"✅ Рейтинг сохранен в GitHub")
+            logger.info(f"✅ Рейтинг сохранен в GitHub: {len(result)} участников")
             return True
         else:
             logger.error(f"❌ Ошибка GitHub API: {result_put.status_code}")
@@ -93,6 +101,7 @@ def save_rating_to_github():
 
 # ============ ОСТАЛЬНОЙ КОД ============
 
+# Загрузка групп из файла
 def load_groups() -> Dict[str, str]:
     """Загружает группы из JSON файла"""
     if os.path.exists(GROUPS_FILE):
@@ -133,6 +142,7 @@ async def delete_all_bot_messages(context: ContextTypes.DEFAULT_TYPE, chat_id: i
     """Удаляет все сообщения бота в чате"""
     try:
         messages = await context.bot.get_chat_history(chat_id, limit=100)
+        
         deleted_count = 0
         for message in messages:
             if message.from_user and message.from_user.id == context.bot.id:
@@ -141,8 +151,10 @@ async def delete_all_bot_messages(context: ContextTypes.DEFAULT_TYPE, chat_id: i
                     deleted_count += 1
                 except Exception as e:
                     logger.error(f"Не удалось удалить сообщение {message.message_id}: {e}")
+        
         if deleted_count > 0:
             logger.info(f"Удалено {deleted_count} сообщений бота для чата {chat_id}")
+        
     except Exception as e:
         logger.error(f"Ошибка при получении истории сообщений: {e}")
 
@@ -366,9 +378,11 @@ async def regulations_read(update: Update, context: ContextTypes.DEFAULT_TYPE):
         'join_count': 1
     }
     
+    # Добавляем в рейтинг
     rating_db.add_or_update_user(user_id, user.username, user.first_name, user.last_name)
     rating_db.update_rating(user_id, 'registration', 100, 'Бонус за регистрацию в сообществе')
     
+    # СОХРАНЯЕМ РЕЙТИНГ В GITHUB
     save_rating_to_github()
     
     db.set_verified(user_id, True)
