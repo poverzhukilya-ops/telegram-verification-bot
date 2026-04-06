@@ -710,16 +710,19 @@ async def handle_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         else:
             await query.answer("ℹ️ Вы уже оценили это сообщение.", show_alert=True)
-            
-       # Удаляем только кнопки, но оставляем сообщение
-try:
-    await query.edit_message_reply_markup(reply_markup=None)
-except:
-    pass
+        
+        # Убираем кнопки только у проголосовавшего
+        try:
+            await query.edit_message_reply_markup(reply_markup=None)
+        except:
+            pass
             
     except Exception as e:
         logger.error(f"Ошибка при обработке реакции: {e}")
-        await query.edit_message_text("❌ Произошла ошибка при обработке оценки.")  # ИСПРАВЛЕНО
+        try:
+            await query.edit_message_text("❌ Произошла ошибка при обработке оценки.")
+        except:
+            pass
 async def get_message_reactions(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда для просмотра реакций на сообщение (ответь на сообщение)"""
     if not update.message.reply_to_message:
