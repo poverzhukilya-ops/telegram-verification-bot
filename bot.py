@@ -842,7 +842,7 @@ async def post_init(application: Application):
         BotCommand("groups", "📁 Группы проектов"),
         BotCommand("status", "📊 Проверить статус"),
         BotCommand("reactions", "👍 Посмотреть оценки сообщения"),
-        BotCommand("rules", "📖 Ре
+          BotCommand("rules", "📖 Регламент"),
     application.run_polling()
 
 if __name__ == '__main__':
