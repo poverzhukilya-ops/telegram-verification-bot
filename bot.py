@@ -934,3 +934,6 @@ def main():
     print("🌐 API сервер запущен на порту " + str(os.environ.get('PORT', 5000)))
     
     application.run_polling()
+    if __name__ == '__main__':
+    main()
+  
