@@ -1,4 +1,3 @@
-# config.py
 import os
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "8592301276:AAG9kvpWi__OEoZ4mQ0muVdMoSMMNOCrn_U")
