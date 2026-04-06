@@ -1,4 +1,3 @@
-# database.py
 import sqlite3
 import json
 from datetime import datetime
@@ -58,6 +57,30 @@ class Database:
                 )
             """)
             
+            # НОВАЯ ТАБЛИЦА: Таблица рейтинга пользователей
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_ratings (
+                    user_id INTEGER PRIMARY KEY,
+                    rating INTEGER DEFAULT 0,
+                    level TEXT DEFAULT 'Новичок',
+                    last_updated TEXT,
+                    FOREIGN KEY (user_id) REFERENCES users (user_id)
+                )
+            """)
+            
+            # НОВАЯ ТАБЛИЦА: Таблица истории изменений рейтинга
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS rating_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
+                    change_date TEXT,
+                    change_type TEXT,
+                    delta INTEGER,
+                    reason TEXT,
+                    FOREIGN KEY (user_id) REFERENCES users (user_id)
+                )
+            """)
+            
             conn.commit()
     
     def add_user(self, user_id: int, username: str = None, first_name: str = None, last_name: str = None):
@@ -68,6 +91,13 @@ class Database:
                 INSERT OR IGNORE INTO users (user_id, username, first_name, last_name, last_activity)
                 VALUES (?, ?, ?, ?, ?)
             """, (user_id, username, first_name, last_name, datetime.now().isoformat()))
+            
+            # Также добавляем запись в таблицу рейтинга
+            cursor.execute("""
+                INSERT OR IGNORE INTO user_ratings (user_id, rating, level, last_updated)
+                VALUES (?, 0, 'Новичок', ?)
+            """, (user_id, datetime.now().isoformat()))
+            
             conn.commit()
     
     def get_user(self, user_id: int) -> Optional[Dict[str, Any]]:
@@ -139,6 +169,95 @@ class Database:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM users WHERE status = ?", (status,))
+            return [dict(row) for row in cursor.fetchall()]
+    
+    # ============ НОВЫЕ МЕТОДЫ ДЛЯ РАБОТЫ С РЕЙТИНГОМ ============
+    
+    def get_user_rating(self, user_id: int) -> int:
+        """Получить текущий рейтинг пользователя"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT rating FROM user_ratings WHERE user_id = ?", (user_id,))
+            result = cursor.fetchone()
+            return result[0] if result else 0
+    
+    def update_user_rating(self, user_id: int, delta: int, reason: str = None):
+        """Обновить рейтинг пользователя"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            
+            # Обновляем рейтинг
+            cursor.execute("""
+                UPDATE user_ratings 
+                SET rating = rating + ?, last_updated = ?
+                WHERE user_id = ?
+            """, (delta, datetime.now().isoformat(), user_id))
+            
+            # Добавляем запись в историю
+            cursor.execute("""
+                INSERT INTO rating_history (user_id, change_date, change_type, delta, reason)
+                VALUES (?, ?, ?, ?, ?)
+            """, (user_id, datetime.now().isoformat(), 'reaction', delta, reason))
+            
+            # Получаем новый рейтинг для определения уровня
+            cursor.execute("SELECT rating FROM user_ratings WHERE user_id = ?", (user_id,))
+            new_rating = cursor.fetchone()[0]
+            
+            # Обновляем уровень
+            level = self._get_level_by_rating(new_rating)
+            cursor.execute("""
+                UPDATE user_ratings SET level = ? WHERE user_id = ?
+            """, (level, user_id))
+            
+            # Также обновляем reputation_score в таблице users
+            cursor.execute("""
+                UPDATE users SET reputation_score = ? WHERE user_id = ?
+            """, (new_rating, user_id))
+            
+            conn.commit()
+            
+            return new_rating
+    
+    def _get_level_by_rating(self, rating: int) -> str:
+        """Определить уровень пользователя по рейтингу"""
+        if rating < 0:
+            return "Нарушитель"
+        elif rating < 100:
+            return "Новичок"
+        elif rating < 500:
+            return "Участник"
+        elif rating < 1000:
+            return "Активный"
+        elif rating < 5000:
+            return "Опытный"
+        else:
+            return "Легенда"
+    
+    def get_rating_history(self, user_id: int, limit: int = 50) -> List[Dict[str, Any]]:
+        """Получить историю изменения рейтинга пользователя"""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM rating_history 
+                WHERE user_id = ? 
+                ORDER BY change_date DESC 
+                LIMIT ?
+            """, (user_id, limit))
+            return [dict(row) for row in cursor.fetchall()]
+    
+    def get_top_rated_users(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Получить топ пользователей по рейтингу"""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT u.user_id, u.username, u.first_name, u.last_name, ur.rating, ur.level
+                FROM user_ratings ur
+                JOIN users u ON u.user_id = ur.user_id
+                ORDER BY ur.rating DESC
+                LIMIT ?
+            """, (limit,))
             return [dict(row) for row in cursor.fetchall()]
 
 # Глобальный экземпляр базы данных
