@@ -645,7 +645,7 @@ async def handle_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reaction_message_id = query.message.message_id
     
     if user_id not in verified_users:
-        await query.edit_text("❌ Вы не верифицированы!")
+        await query.edit_message_text("❌ Вы не верифицированы!")  # ИСПРАВЛЕНО
         return
     
     data_parts = query.data.split('_')
@@ -662,7 +662,7 @@ async def handle_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
             original_message = await context.bot.get_message(chat_id, original_message_id)
         
         if not original_message:
-            await query.edit_text("❌ Не удалось найти оригинальное сообщение.")
+            await query.edit_message_text("❌ Не удалось найти оригинальное сообщение.")  # ИСПРАВЛЕНО
             return
         
         author_id = original_message.from_user.id
@@ -686,7 +686,7 @@ async def handle_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
             save_rating_to_github()
             await update_reaction_buttons(context, chat_id, original_message_id, reaction_message_id)
             
-            await query.edit_text(
+            await query.edit_message_text(  # ИСПРАВЛЕНО
                 f"{'✅ +10 к рейтингу' if new_reaction == 1 else '❌ -10 к рейтингу'}!\n"
                 f"Вы {'лайкнули' if new_reaction == 1 else 'дизлайкнули'} сообщение от @{original_message.from_user.username or 'пользователя'}."
             )
@@ -700,7 +700,7 @@ async def handle_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
             save_rating_to_github()
             await update_reaction_buttons(context, chat_id, original_message_id, reaction_message_id)
             
-            await query.edit_text(
+            await query.edit_message_text(  # ИСПРАВЛЕНО
                 f"🔄 Оценка изменена!\n"
                 f"Теперь: {'👍' if new_reaction == 1 else '👎'}\n"
                 f"Изменение рейтинга автора: {'+' if delta_for_author > 0 else ''}{delta_for_author}"
@@ -716,8 +716,7 @@ async def handle_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
     except Exception as e:
         logger.error(f"Ошибка при обработке реакции: {e}")
-        await query.edit_text("❌ Произошла ошибка при обработке оценки.")
-
+        await query.edit_message_text("❌ Произошла ошибка при обработке оценки.")  # ИСПРАВЛЕНО
 async def get_message_reactions(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда для просмотра реакций на сообщение (ответь на сообщение)"""
     if not update.message.reply_to_message:
