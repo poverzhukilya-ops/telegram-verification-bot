@@ -711,13 +711,16 @@ async def handle_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
             save_rating_to_github()
             await update_reaction_buttons(context, chat_id, original_message_id, reaction_message_id)
             
-            await query.edit_message_text(
-                f"🔄 Оценка изменена!\n"
-                f"Теперь: {'👍' if new_reaction == 1 else '👎'}\n"
-                f"Изменение рейтинга автора: {'+' if delta_for_author > 0 else ''}{delta_for_author}"
+                      # Отправляем НОВОЕ сообщение с результатом
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"🔄 Оценка изменена!\n"
+                     f"Теперь: {'👍' if new_reaction == 1 else '👎'}\n"
+                     f"Изменение рейтинга автора: {'+' if delta_for_author > 0 else ''}{delta_for_author}"
             )
-        else:
-            await query.answer("ℹ️ Вы уже оценили это сообщение.", show_alert=True)
+            
+            # Убираем кнопки ТОЛЬКО у этого пользователя
+            await query.edit_message_reply_markup(reply_markup=None)
         
         # Убираем кнопки только у проголосовавшего
         try:
