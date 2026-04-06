@@ -1,4 +1,3 @@
-# rating_db.py
 import sqlite3
 from datetime import datetime
 import logging
@@ -56,6 +55,35 @@ class RatingDB:
                     created_at TIMESTAMP,
                     FOREIGN KEY (user_id) REFERENCES users (user_id)
                 )
+            ''')
+            
+            # НОВАЯ ТАБЛИЦА: Таблица реакций на сообщения
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS message_reactions (
+                    message_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    author_id INTEGER NOT NULL,
+                    reaction INTEGER NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (message_id, user_id)
+                )
+            ''')
+            
+            # НОВАЯ ТАБЛИЦА: Индексы для быстрого поиска
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_message_author 
+                ON message_reactions(message_id, author_id)
+            ''')
+            
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_user_reactions 
+                ON message_reactions(user_id)
+            ''')
+            
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_author_reactions 
+                ON message_reactions(author_id)
             ''')
             
             conn.commit()
@@ -214,5 +242,86 @@ class RatingDB:
                 'total_projects': total_projects,
                 'avg_points': avg_points
             }
+    
+    # ============ НОВЫЕ МЕТОДЫ ДЛЯ СИСТЕМЫ ЛАЙКОВ/ДИЗЛАЙКОВ ============
+    
+    def init_reactions_table(self):
+        """Инициализация таблицы реакций (вызывается автоматически при первом использовании)"""
+        # Таблица уже создана в init_db, но оставляем метод для совместимости
+        pass
+    
+    def get_user_reaction(self, message_id: int, user_id: int):
+        """Получить реакцию пользователя на сообщение"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                'SELECT reaction FROM message_reactions WHERE message_id = ? AND user_id = ?',
+                (message_id, user_id)
+            )
+            result = cursor.fetchone()
+            return result[0] if result else None
+    
+    def save_reaction(self, message_id: int, user_id: int, author_id: int, reaction: int):
+        """Сохранить новую реакцию"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO message_reactions (message_id, user_id, author_id, reaction, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (message_id, user_id, author_id, reaction, datetime.now(), datetime.now()))
+            conn.commit()
+    
+    def update_reaction(self, message_id: int, user_id: int, new_reaction: int):
+        """Обновить существующую реакцию"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE message_reactions 
+                SET reaction = ?, updated_at = ?
+                WHERE message_id = ? AND user_id = ?
+            ''', (new_reaction, datetime.now(), message_id, user_id))
+            conn.commit()
+    
+    def get_message_reaction_stats(self, message_id: int):
+        """Получить статистику реакций для сообщения"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT 
+                    SUM(CASE WHEN reaction = 1 THEN 1 ELSE 0 END) as likes,
+                    SUM(CASE WHEN reaction = -1 THEN 1 ELSE 0 END) as dislikes
+                FROM message_reactions 
+                WHERE message_id = ?
+            ''', (message_id,))
+            result = cursor.fetchone()
+            return {'likes': result[0] or 0, 'dislikes': result[1] or 0}
+    
+    def get_user_total_reactions_given(self, user_id: int):
+        """Получить общее количество реакций, поставленных пользователем"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT COUNT(*) FROM message_reactions WHERE user_id = ?
+            ''', (user_id,))
+            return cursor.fetchone()[0] or 0
+    
+    def get_user_total_reactions_received(self, user_id: int):
+        """Получить общее количество реакций, полученных пользователем"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT 
+                    SUM(CASE WHEN reaction = 1 THEN 1 ELSE 0 END) as likes,
+                    SUM(CASE WHEN reaction = -1 THEN 1 ELSE 0 END) as dislikes
+                FROM message_reactions 
+                WHERE author_id = ?
+            ''', (user_id,))
+            result = cursor.fetchone()
+            return {'likes': result[0] or 0, 'dislikes': result[1] or 0}
+    
+    def get_reaction_net_score(self, user_id: int):
+        """Получить чистый счёт реакций пользователя (лайки - дизлайки)"""
+        stats = self.get_user_total_reactions_received(user_id)
+        return stats['likes'] - stats['dislikes']
 
 rating_db = RatingDB()
