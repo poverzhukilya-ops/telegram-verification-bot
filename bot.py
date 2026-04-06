@@ -921,8 +921,8 @@ def main():
     ))
     application.add_handler(CallbackQueryHandler(handle_reaction, pattern='^(like|dislike)_'))
     
-    # Обработчик стандартных реакций Telegram
-    application.add_handler(MessageReactionHandler(handle_message_reaction))
+    # Обработчик стандартных реакций Telegram (временно отключён, пока не обновим библиотеку)
+    # application.add_handler(MessageReactionHandler(handle_message_reaction))
     
     application.add_error_handler(error_handler)
     
@@ -934,6 +934,7 @@ def main():
     print("🌐 API сервер запущен на порту " + str(os.environ.get('PORT', 5000)))
     
     application.run_polling()
-    if __name__ == '__main__':
+
+if __name__ == '__main__':
     main()
   
