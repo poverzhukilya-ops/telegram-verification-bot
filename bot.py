@@ -596,10 +596,11 @@ async def add_reaction_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
     
     user_id = update.message.from_user.id
     
-    # Проверяем через базу данных, а не через память
-    user_data = db.get_user(user_id)
-    if not user_data or not user_data.get('verified'):
-        return
+      # Временно убираем проверку на верификацию
+    # user_data = db.get_user(user_id)
+    # if not user_data or not user_data.get('verified'):
+    #     return
+    pass
     
     message_id = update.message.message_id
     
