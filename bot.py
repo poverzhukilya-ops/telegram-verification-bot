@@ -870,11 +870,7 @@ def main():
     api_thread.start()
     logger.info("✅ API сервер запущен в фоновом потоке")
     
-    application = Application.builder()\
-    .token(BOT_TOKEN)\
-    .post_init(post_init)\
-    .allowed_updates(["message", "callback_query", "message_reaction", "message_reaction_count"])\
-    .build()
+    application = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
     
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
@@ -938,6 +934,3 @@ def main():
     print("🌐 API сервер запущен на порту " + str(os.environ.get('PORT', 5000)))
     
     application.run_polling()
-
-if __name__ == '__main__':
-    main()
