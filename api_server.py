@@ -133,7 +133,6 @@ def health_check():
     return jsonify({'status': 'ok', 'message': 'API is running'})
 
 if __name__ == '__main__':
-    # Запускаем API сервер на порту 5000
-# Railway сам задаёт порт через переменную PORT
-port = int(os.environ.get('PORT', 5000))
-app.run(host='0.0.0.0', port=port, debug=False)
+    # Railway сам задаёт порт через переменную PORT
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
