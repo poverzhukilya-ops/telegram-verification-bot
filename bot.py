@@ -1,9 +1,9 @@
-# bot.py
 import logging
 import json
 import os
 import requests
 import base64
+import asyncio  # ДОБАВЛЕНО
 from datetime import datetime
 from typing import Dict
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
@@ -565,6 +565,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 /start — регистрация
 /status — проверить статус
 /groups — список групп проектов
+/reactions — посмотреть оценки сообщения
 /rules — регламент
 /about — о сообществе
 /help — справка
@@ -583,6 +584,160 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return ConversationHandler.END
 
+# ============ СИСТЕМА ЛАЙКОВ/ДИЗЛАЙКОВ ============
+
+async def add_reaction_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Добавляет кнопки лайк/дизлайк к новым сообщениям в группе"""
+    if not update.message or update.message.chat.type not in ['group', 'supergroup']:
+        return
+    
+    if update.message.from_user.is_bot:
+        return
+    
+    user_id = update.message.from_user.id
+    if user_id not in verified_users:
+        return
+    
+    message_id = update.message.message_id
+    
+    keyboard = [
+        [
+            InlineKeyboardButton("👍 0", callback_data=f"like_{message_id}"),
+            InlineKeyboardButton("👎 0", callback_data=f"dislike_{message_id}")
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        "💬 Оцените это сообщение:",
+        reply_markup=reply_markup,
+        quote=True
+    )
+
+async def update_reaction_buttons(context: ContextTypes.DEFAULT_TYPE, chat_id: int, message_id: int, reaction_message_id: int):
+    """Обновляет счётчики на кнопках"""
+    try:
+        stats = rating_db.get_message_reaction_stats(message_id)
+        
+        keyboard = [
+            [
+                InlineKeyboardButton(f"👍 {stats['likes']}", callback_data=f"like_{message_id}"),
+                InlineKeyboardButton(f"👎 {stats['dislikes']}", callback_data=f"dislike_{message_id}")
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await context.bot.edit_message_reply_markup(
+            chat_id=chat_id,
+            message_id=reaction_message_id,
+            reply_markup=reply_markup
+        )
+    except Exception as e:
+        logger.error(f"Ошибка обновления кнопок: {e}")
+
+async def handle_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обрабатывает нажатия на кнопки лайк/дизлайк"""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    chat_id = query.message.chat_id
+    reaction_message_id = query.message.message_id
+    
+    if user_id not in verified_users:
+        await query.edit_text("❌ Вы не верифицированы!")
+        return
+    
+    data_parts = query.data.split('_')
+    reaction_type = data_parts[0]
+    original_message_id = int(data_parts[1])
+    
+    new_reaction = 1 if reaction_type == 'like' else -1
+    
+    try:
+        original_message = None
+        if query.message.reply_to_message:
+            original_message = query.message.reply_to_message
+        else:
+            original_message = await context.bot.get_message(chat_id, original_message_id)
+        
+        if not original_message:
+            await query.edit_text("❌ Не удалось найти оригинальное сообщение.")
+            return
+        
+        author_id = original_message.from_user.id
+        
+        if user_id == author_id:
+            await query.answer("❌ Вы не можете оценивать свои сообщения!", show_alert=True)
+            return
+        
+        rating_db.init_reactions_table()
+        
+        old_reaction = rating_db.get_user_reaction(original_message_id, user_id)
+        
+        delta_for_author = 0
+        
+        if old_reaction is None:
+            delta_for_author = new_reaction * 10
+            rating_db.save_reaction(original_message_id, user_id, author_id, new_reaction)
+            rating_db.update_rating(author_id, 'reaction', delta_for_author, 
+                                    f"{'Лайк' if new_reaction == 1 else 'Дизлайк'} от пользователя {user_id}")
+            
+            save_rating_to_github()
+            await update_reaction_buttons(context, chat_id, original_message_id, reaction_message_id)
+            
+            await query.edit_text(
+                f"{'✅ +10 к рейтингу' if new_reaction == 1 else '❌ -10 к рейтингу'}!\n"
+                f"Вы {'лайкнули' if new_reaction == 1 else 'дизлайкнули'} сообщение от @{original_message.from_user.username or 'пользователя'}."
+            )
+            
+        elif old_reaction != new_reaction:
+            delta_for_author = (new_reaction - old_reaction) * 10
+            rating_db.update_reaction(original_message_id, user_id, new_reaction)
+            rating_db.update_rating(author_id, 'reaction_change', delta_for_author, 
+                                    f"Смена оценки: {old_reaction} -> {new_reaction} от пользователя {user_id}")
+            
+            save_rating_to_github()
+            await update_reaction_buttons(context, chat_id, original_message_id, reaction_message_id)
+            
+            await query.edit_text(
+                f"🔄 Оценка изменена!\n"
+                f"Теперь: {'👍' if new_reaction == 1 else '👎'}\n"
+                f"Изменение рейтинга автора: {'+' if delta_for_author > 0 else ''}{delta_for_author}"
+            )
+        else:
+            await query.answer("ℹ️ Вы уже оценили это сообщение.", show_alert=True)
+            
+        await asyncio.sleep(5)
+        try:
+            await query.delete_message()
+        except:
+            pass
+            
+    except Exception as e:
+        logger.error(f"Ошибка при обработке реакции: {e}")
+        await query.edit_text("❌ Произошла ошибка при обработке оценки.")
+
+async def get_message_reactions(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда для просмотра реакций на сообщение (ответь на сообщение)"""
+    if not update.message.reply_to_message:
+        await update.message.reply_text("ℹ️ Ответьте на сообщение, чтобы посмотреть его оценки.")
+        return
+    
+    original_message = update.message.reply_to_message
+    message_id = original_message.message_id
+    
+    stats = rating_db.get_message_reaction_stats(message_id)
+    
+    await update.message.reply_text(
+        f"📊 *Статистика сообщения:*\n\n"
+        f"👍 Лайков: {stats['likes']}\n"
+        f"👎 Дизлайков: {stats['dislikes']}\n"
+        f"📈 Всего оценок: {stats['likes'] + stats['dislikes']}\n"
+        f"📉 Рейтинг: {stats['likes'] - stats['dislikes']}",
+        parse_mode='Markdown'
+    )
+
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка ошибок"""
     logger.error(f"Ошибка: {context.error}")
@@ -593,6 +748,7 @@ async def post_init(application: Application):
         BotCommand("start", "🚀 Начать регистрацию"),
         BotCommand("groups", "📁 Группы проектов"),
         BotCommand("status", "📊 Проверить статус"),
+        BotCommand("reactions", "👍 Посмотреть оценки сообщения"),
         BotCommand("rules", "📖 Регламент"),
         BotCommand("about", "ℹ️ О сообществе"),
         BotCommand("help", "🆘 Помощь"),
@@ -642,19 +798,26 @@ def main():
     application.add_handler(CallbackQueryHandler(refresh_projects, pattern='refresh_projects'))
     application.add_handler(CommandHandler('status', status))
     application.add_handler(CommandHandler('groups', groups_command))
+    application.add_handler(CommandHandler('reactions', get_message_reactions))  # ДОБАВЛЕНО
     application.add_handler(CommandHandler('rules', rules))
     application.add_handler(CommandHandler('about', about))
     application.add_handler(CommandHandler('help', help_command))
+    
+    # ДОБАВЛЕНЫ ОБРАБОТЧИКИ ДЛЯ ЛАЙКОВ
+    application.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),
+        add_reaction_buttons
+    ))
+    application.add_handler(CallbackQueryHandler(handle_reaction, pattern='^(like|dislike)_'))
+    
     application.add_error_handler(error_handler)
     
     print("🤖 Бот Avantyurist запущен!")
     print("📊 Лимит вступлений: 3 раза")
     print("📁 Кастомное меню установлено! Кнопка меню внизу экрана")
     print("📋 Команда /groups доступна в меню")
-    print(f"🔗 Ссылка на группу: {INVITE_LINK}")
-    print(f"📖 Регламент: {REGULATIONS_LINK}")
-    
-    application.run_polling()
+    print("👍 Система лайков/
+      application.run_polling()
 
 if __name__ == '__main__':
     main()
