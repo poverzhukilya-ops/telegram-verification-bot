@@ -605,15 +605,16 @@ async def add_reaction_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
     # Добавляем пользователя в рейтинг (ЛЮБОГО пользователя)
     rating_db.add_or_update_user(user_id, user.username, user.first_name, user.last_name)
     
-    # Добавляем кнопки под сообщением
+    # Добавляем кнопки под сообщением (компактная версия)
     message_id = update.message.message_id
     keyboard = [[
         InlineKeyboardButton("👍 0", callback_data=f"like_{message_id}"),
         InlineKeyboardButton("👎 0", callback_data=f"dislike_{message_id}")
     ]]
     
+    # Компактное сообщение без лишнего текста
     await update.message.reply_text(
-        "💬 Оцените это сообщение:",
+        "👍 0  👎 0",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
     
@@ -629,12 +630,13 @@ async def update_reaction_buttons(context: ContextTypes.DEFAULT_TYPE, chat_id: i
                 InlineKeyboardButton(f"👎 {stats['dislikes']}", callback_data=f"dislike_{message_id}")
             ]
         ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
         
-        await context.bot.edit_message_reply_markup(
+        # Обновляем текст сообщения с новыми счётчиками
+        await context.bot.edit_message_text(
             chat_id=chat_id,
             message_id=reaction_message_id,
-            reply_markup=reply_markup
+            text=f"👍 {stats['likes']}  👎 {stats['dislikes']}",
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
     except Exception as e:
         logger.error(f"Ошибка обновления кнопок: {e}")
