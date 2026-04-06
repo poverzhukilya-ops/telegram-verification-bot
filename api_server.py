@@ -1,3 +1,4 @@
+import os
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from rating_db import rating_db
@@ -133,4 +134,6 @@ def health_check():
 
 if __name__ == '__main__':
     # Запускаем API сервер на порту 5000
-    app.run(host='0.0.0.0', port=5000, debug=False)
+# Railway сам задаёт порт через переменную PORT
+port = int(os.environ.get('PORT', 5000))
+app.run(host='0.0.0.0', port=port, debug=False)
