@@ -616,7 +616,7 @@ async def add_reaction_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
     
     # Компактное сообщение без лишнего текста
     await update.message.reply_text(
-        "👍 0  👎 0",
+        " 0   0",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
     
