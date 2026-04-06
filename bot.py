@@ -711,11 +711,11 @@ async def handle_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await query.answer("ℹ️ Вы уже оценили это сообщение.", show_alert=True)
             
-        await asyncio.sleep(5)
-        try:
-            await query.delete_message()
-        except:
-            pass
+       # Удаляем только кнопки, но оставляем сообщение
+try:
+    await query.edit_message_reply_markup(reply_markup=None)
+except:
+    pass
             
     except Exception as e:
         logger.error(f"Ошибка при обработке реакции: {e}")
