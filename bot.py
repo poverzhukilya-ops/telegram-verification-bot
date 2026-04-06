@@ -3,11 +3,12 @@ import json
 import os
 import requests
 import base64
-import asyncio  # ДОБАВЛЕНО
+import asyncio
 from datetime import datetime
 from typing import Dict
+from collections import deque
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, ConversationHandler, MessageHandler, filters
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, ConversationHandler, MessageHandler, filters, MessageReactionHandler
 
 from config import BOT_TOKEN, GROUP_ID, INVITE_LINK, ADMIN_ID, REGULATIONS_LINK, GROUPS_FILE, CHANNEL_LINK
 from database import db
@@ -31,11 +32,15 @@ ADD_GROUP_LINK = 4
 verified_users = {}
 user_states = {}
 
+# Кэш для хранения связи ID сообщения с ID автора (для стандартных реакций)
+MAX_CACHE_SIZE = 1000
+reaction_cache = {}
+reaction_cache_order = deque()
+
 # ============ ФУНКЦИЯ СОХРАНЕНИЯ РЕЙТИНГА В GITHUB ============
 def save_rating_to_github():
     """Сохраняет рейтинг в GitHub репозиторий"""
     try:
-        # Получаем список рейтинга
         rating_list = rating_db.get_rating_list(100)
         result = []
         
@@ -52,7 +57,6 @@ def save_rating_to_github():
                 'reputation': user[10] if len(user) > 10 else 0
             })
         
-        # Формируем JSON
         data = {
             'success': True,
             'data': result,
@@ -62,7 +66,6 @@ def save_rating_to_github():
         
         content = json.dumps(data, ensure_ascii=False, indent=2)
         
-        # GitHub API
         github_token = os.environ.get('GITHUB_TOKEN')
         if not github_token:
             logger.warning("GITHUB_TOKEN не установлен")
@@ -74,18 +77,15 @@ def save_rating_to_github():
             "Accept": "application/vnd.github.v3+json"
         }
         
-        # Получаем текущий файл
         response = requests.get(url, headers=headers)
         sha = response.json().get('sha') if response.status_code == 200 else None
         
-        # Подготовка данных
         commit_data = {
             "message": f"Update rating {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
             "content": base64.b64encode(content.encode('utf-8')).decode('utf-8'),
             "sha": sha
         }
         
-        # Отправляем
         result_put = requests.put(url, headers=headers, json=commit_data)
         
         if result_put.status_code in [200, 201]:
@@ -101,7 +101,6 @@ def save_rating_to_github():
 
 # ============ ОСТАЛЬНОЙ КОД ============
 
-# Загрузка групп из файла
 def load_groups() -> Dict[str, str]:
     """Загружает группы из JSON файла"""
     if os.path.exists(GROUPS_FILE):
@@ -121,7 +120,6 @@ def save_groups(groups: Dict[str, str]):
         logger.error(f"Ошибка сохранения групп: {e}")
 
 async def check_user_in_group(context: ContextTypes.DEFAULT_TYPE, user_id: int) -> bool:
-    """Проверяет, состоит ли пользователь в группе"""
     try:
         member = await context.bot.get_chat_member(chat_id=GROUP_ID, user_id=user_id)
         return member.status in ['member', 'administrator', 'creator']
@@ -130,7 +128,6 @@ async def check_user_in_group(context: ContextTypes.DEFAULT_TYPE, user_id: int) 
         return False
 
 async def clear_user_data(user_id: int, context: ContextTypes.DEFAULT_TYPE = None):
-    """Полная очистка данных пользователя"""
     if user_id in verified_users:
         del verified_users[user_id]
     if user_id in user_states:
@@ -139,10 +136,8 @@ async def clear_user_data(user_id: int, context: ContextTypes.DEFAULT_TYPE = Non
         context.user_data.clear()
 
 async def delete_all_bot_messages(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
-    """Удаляет все сообщения бота в чате"""
     try:
         messages = await context.bot.get_chat_history(chat_id, limit=100)
-        
         deleted_count = 0
         for message in messages:
             if message.from_user and message.from_user.id == context.bot.id:
@@ -151,15 +146,12 @@ async def delete_all_bot_messages(context: ContextTypes.DEFAULT_TYPE, chat_id: i
                     deleted_count += 1
                 except Exception as e:
                     logger.error(f"Не удалось удалить сообщение {message.message_id}: {e}")
-        
         if deleted_count > 0:
             logger.info(f"Удалено {deleted_count} сообщений бота для чата {chat_id}")
-        
     except Exception as e:
         logger.error(f"Ошибка при получении истории сообщений: {e}")
 
 async def send_projects_list(chat_id: int, context: ContextTypes.DEFAULT_TYPE, message_id: int = None, is_edit: bool = False):
-    """Отправляет список проектов"""
     groups = load_groups()
     
     if not groups:
@@ -204,7 +196,6 @@ async def send_projects_list(chat_id: int, context: ContextTypes.DEFAULT_TYPE, m
         )
 
 async def groups_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Команда /groups — показать список групп проектов"""
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
     
@@ -235,7 +226,6 @@ async def groups_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_projects_list(chat_id, context)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Команда /start — начало регистрации"""
     user = update.effective_user
     user_id = user.id
     
@@ -269,7 +259,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return STEP1_CAPTCHA
 
 async def start_step1(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Шаг 1: Проверка на бота"""
     query = update.callback_query
     await query.answer()
     
@@ -333,7 +322,6 @@ async def start_step1(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return STEP1_CAPTCHA
 
 async def captcha_passed(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Шаг 1 завершён: капча пройдена"""
     query = update.callback_query
     await query.answer()
     
@@ -358,7 +346,6 @@ async def captcha_passed(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return STEP2_REGULATIONS
 
 async def regulations_read(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Шаг 2: Подтверждение ознакомления с регламентом"""
     query = update.callback_query
     await query.answer()
     
@@ -378,11 +365,9 @@ async def regulations_read(update: Update, context: ContextTypes.DEFAULT_TYPE):
         'join_count': 1
     }
     
-    # Добавляем в рейтинг
     rating_db.add_or_update_user(user_id, user.username, user.first_name, user.last_name)
     rating_db.update_rating(user_id, 'registration', 100, 'Бонус за регистрацию в сообществе')
     
-    # СОХРАНЯЕМ РЕЙТИНГ В GITHUB
     save_rating_to_github()
     
     db.set_verified(user_id, True)
@@ -407,7 +392,6 @@ async def regulations_read(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def send_invite_link(message, user_id: int):
-    """Отправка пригласительных ссылок"""
     group_button = InlineKeyboardButton("🚪 Войти в группу", url=INVITE_LINK)
     channel_button = InlineKeyboardButton("📢 Подписаться на канал", url=CHANNEL_LINK)
     
@@ -421,7 +405,6 @@ async def send_invite_link(message, user_id: int):
     )
 
 async def refresh_projects(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обновление списка проектов"""
     query = update.callback_query
     await query.answer()
     
@@ -444,7 +427,6 @@ async def refresh_projects(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_projects_list(chat_id, context)
 
 async def add_group_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Начало добавления группы (только для админа)"""
     query = update.callback_query
     await query.answer()
     
@@ -465,7 +447,6 @@ async def add_group_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ADD_GROUP_NAME
 
 async def add_group_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Получение названия группы"""
     group_name = update.message.text.strip()
     context.user_data['new_group_name'] = group_name
     
@@ -477,7 +458,6 @@ async def add_group_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ADD_GROUP_LINK
 
 async def add_group_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Получение ссылки и сохранение группы"""
     group_link = update.message.text.strip()
     group_name = context.user_data.get('new_group_name')
     
@@ -505,7 +485,6 @@ async def add_group_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Проверка статуса"""
     user_id = update.effective_user.id
     in_group = await check_user_in_group(context, user_id)
     
@@ -539,7 +518,6 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 async def rules(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Отправка ссылки на регламент"""
     keyboard = [[InlineKeyboardButton("📖 Регламент", url=REGULATIONS_LINK)]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
@@ -550,7 +528,6 @@ async def rules(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def about(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Информация о сообществе"""
     await update.message.reply_text(
         "🌟 *Avantyurist* — сообщество инициативных людей.\n\nСовместные проекты, инвестиции, развитие.\n\n" + f"[Регламент]({REGULATIONS_LINK})",
         parse_mode='Markdown',
@@ -558,7 +535,6 @@ async def about(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Справка"""
     help_text = """
 📖 *Команды:*
 
@@ -575,7 +551,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Отмена регистрации"""
     user_id = update.effective_user.id
     await clear_user_data(user_id, context)
     
@@ -589,32 +564,34 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def add_reaction_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Добавляет кнопки лайк/дизлайк к новым сообщениям в группе"""
     
-    # Проверяем, что это сообщение из группы
     if not update.message or update.message.chat.type not in ['group', 'supergroup']:
         return
     
-    # Игнорируем сообщения от ботов
     if update.message.from_user.is_bot:
         return
     
-    # Получаем информацию о пользователе
     user = update.message.from_user
     user_id = user.id
     
-    # Диагностика в лог
     logger.info(f"🔍 Бот видит сообщение от {user_id} (@{user.username})")
     
-    # Добавляем пользователя в рейтинг (ЛЮБОГО пользователя)
     rating_db.add_or_update_user(user_id, user.username, user.first_name, user.last_name)
     
-    # Добавляем кнопки под сообщением (компактная версия)
     message_id = update.message.message_id
+    
+    # Сохраняем связь message_id -> author_id для обработки стандартных реакций
+    global reaction_cache, reaction_cache_order
+    reaction_cache[message_id] = user_id
+    reaction_cache_order.append(message_id)
+    if len(reaction_cache_order) > MAX_CACHE_SIZE:
+        oldest = reaction_cache_order.popleft()
+        reaction_cache.pop(oldest, None)
+    
     keyboard = [[
         InlineKeyboardButton("👍 0", callback_data=f"like_{message_id}"),
         InlineKeyboardButton("👎 0", callback_data=f"dislike_{message_id}")
     ]]
     
-    # Компактное сообщение без лишнего текста
     await update.message.reply_text(
         "    ",
         reply_markup=InlineKeyboardMarkup(keyboard)
@@ -634,7 +611,6 @@ async def update_reaction_buttons(context: ContextTypes.DEFAULT_TYPE, chat_id: i
             ]
         ]
         
-        # Обновляем текст сообщения с новыми счётчиками
         await context.bot.edit_message_text(
             chat_id=chat_id,
             message_id=reaction_message_id,
@@ -691,14 +667,12 @@ async def handle_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
             save_rating_to_github()
             await update_reaction_buttons(context, chat_id, original_message_id, reaction_message_id)
             
-            # Отправляем сообщение с результатом
             result_msg = await context.bot.send_message(
                 chat_id=chat_id,
                 text=f"{'✅ +10 к рейтингу' if new_reaction == 1 else '❌ -10 к рейтингу'}!\n"
                      f"Вы {'лайкнули' if new_reaction == 1 else 'дизлайкнули'} сообщение от @{original_message.from_user.username or 'пользователя'}."
             )
             
-            # Удаляем сообщение с результатом через 3 секунды
             await asyncio.sleep(3)
             try:
                 await result_msg.delete()
@@ -714,7 +688,6 @@ async def handle_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
             save_rating_to_github()
             await update_reaction_buttons(context, chat_id, original_message_id, reaction_message_id)
             
-            # Отправляем сообщение с результатом
             result_msg = await context.bot.send_message(
                 chat_id=chat_id,
                 text=f"🔄 Оценка изменена!\n"
@@ -722,7 +695,6 @@ async def handle_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
                      f"Изменение рейтинга автора: {'+' if delta_for_author > 0 else ''}{delta_for_author}"
             )
             
-            # Удаляем сообщение с результатом через 3 секунды
             await asyncio.sleep(3)
             try:
                 await result_msg.delete()
@@ -738,6 +710,108 @@ async def handle_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text("❌ Произошла ошибка при обработке оценки.")
         except:
             pass
+
+# ============ ОБРАБОТЧИК СТАНДАРТНЫХ РЕАКЦИЙ TELEGRAM ============
+
+async def handle_message_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обрабатывает стандартные реакции Telegram (👍/👎)"""
+    
+    if not update.message_reaction:
+        return
+    
+    reaction_update = update.message_reaction
+    chat_id = reaction_update.chat.id
+    message_id = reaction_update.message_id
+    user = reaction_update.user
+    
+    # Игнорируем реакции от ботов
+    if user.is_bot:
+        return
+    
+    # Получаем новые реакции
+    new_reactions = reaction_update.new_reaction
+    
+    # Проверяем, есть ли 👍 или 👎
+    has_like = any(r.emoji == '👍' for r in new_reactions)
+    has_dislike = any(r.emoji == '👎' for r in new_reactions)
+    
+    if not has_like and not has_dislike:
+        return
+    
+    # Определяем тип реакции
+    if has_like:
+        delta = 10
+        emoji = '👍'
+    else:
+        delta = -10
+        emoji = '👎'
+    
+    # Находим автора сообщения из кэша
+    author_id = reaction_cache.get(message_id)
+    if not author_id:
+        logger.warning(f"⚠️ Не найден автор для message_id {message_id}")
+        return
+    
+    # Нельзя оценивать свои сообщения
+    if user.id == author_id:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"❌ Вы не можете оценивать свои сообщения!"
+        )
+        return
+    
+    # Проверяем, не ставил ли уже этот пользователь реакцию
+    old_reaction = rating_db.get_user_reaction(message_id, user.id)
+    
+    if old_reaction is None:
+        # Первая реакция
+        rating_db.save_reaction(message_id, user.id, author_id, delta // 10)
+        rating_db.update_rating(author_id, 'reaction', delta, 
+                                f"{'Лайк' if delta > 0 else 'Дизлайк'} от пользователя {user.id}")
+        
+        save_rating_to_github()
+        
+        # Отправляем уведомление
+        msg = await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"{'✅ +10 к рейтингу' if delta > 0 else '❌ -10 к рейтингу'}!\n"
+                 f"Пользователь @{user.username or user.first_name} "
+                 f"{'лайкнул' if delta > 0 else 'дизлайкнул'} сообщение {emoji}"
+        )
+        
+        await asyncio.sleep(3)
+        try:
+            await msg.delete()
+        except:
+            pass
+            
+    elif old_reaction != (delta // 10):
+        # Смена реакции
+        old_delta = old_reaction * 10
+        delta_for_author = delta - old_delta
+        
+        rating_db.update_reaction(message_id, user.id, delta // 10)
+        rating_db.update_rating(author_id, 'reaction_change', delta_for_author, 
+                                f"Смена реакции: {old_reaction} -> {delta // 10} от {user.id}")
+        
+        save_rating_to_github()
+        
+        # Отправляем уведомление
+        msg = await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"🔄 Оценка изменена!\n"
+                 f"Теперь: {emoji}\n"
+                 f"Изменение рейтинга: {'+' if delta_for_author > 0 else ''}{delta_for_author}"
+        )
+        
+        await asyncio.sleep(3)
+        try:
+            await msg.delete()
+        except:
+            pass
+    else:
+        # Та же реакция (игнорируем)
+        pass
 
 async def get_message_reactions(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда для просмотра реакций на сообщение (ответь на сообщение)"""
@@ -758,104 +832,17 @@ async def get_message_reactions(update: Update, context: ContextTypes.DEFAULT_TY
         f"📉 Рейтинг: {stats['likes'] - stats['dislikes']}",
         parse_mode='Markdown'
     )
+
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка ошибок"""
     logger.error(f"Ошибка: {context.error}")
 
 async def post_init(application: Application):
-    """Функция, которая выполняется после запуска бота"""
     commands = [
         BotCommand("start", "🚀 Начать регистрацию"),
         BotCommand("groups", "📁 Группы проектов"),
         BotCommand("status", "📊 Проверить статус"),
         BotCommand("reactions", "👍 Посмотреть оценки сообщения"),
-        BotCommand("rules", "📖 Регламент"),
-        BotCommand("about", "ℹ️ О сообществе"),
-        BotCommand("help", "🆘 Помощь"),
-    ]
-    
-    await application.bot.set_my_commands(commands)
-    logger.info("✅ Кастомное меню команд установлено!")
-
-def run_api():
-    """Запускает API сервер в отдельном потоке"""
-    try:
-        from api_server import app
-        port = int(os.environ.get('PORT', 5000))
-        logger.info(f"🚀 Запуск API сервера на порту {port}")
-        # use_reloader=False важно, чтобы не создавать бесконечные потоки
-        app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
-    except Exception as e:
-        logger.error(f"❌ Ошибка запуска API: {e}")
-
-def main():
-    """Запуск бота"""
-    
-    # ЗАПУСКАЕМ API СЕРВЕР В ОТДЕЛЬНОМ ПОТОКЕ
-    api_thread = threading.Thread(target=run_api, daemon=True)
-    api_thread.start()
-    logger.info("✅ API сервер запущен в фоновом потоке")
-    
-    application = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
-    
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('start', start)],
-        states={
-            STEP1_CAPTCHA: [
-                CallbackQueryHandler(start_step1, pattern='start_step1'),
-                CallbackQueryHandler(captcha_passed, pattern='captcha_passed'),
-            ],
-            STEP2_REGULATIONS: [
-                CallbackQueryHandler(regulations_read, pattern='regulations_read'),
-            ],
-        },
-        fallbacks=[
-            CommandHandler('cancel', cancel),
-            CommandHandler('start', start),
-        ],
-        allow_reentry=True,
-    )
-    
-    add_group_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(add_group_start, pattern='add_group')],
-        states={
-            ADD_GROUP_NAME: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, add_group_name)
-            ],
-            ADD_GROUP_LINK: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, add_group_link)
-            ],
-        },
-        fallbacks=[CommandHandler('cancel', cancel)],
-        allow_reentry=True,
-    )
-    
-    application.add_handler(conv_handler)
-    application.add_handler(add_group_handler)
-    application.add_handler(CallbackQueryHandler(refresh_projects, pattern='refresh_projects'))
-    application.add_handler(CommandHandler('status', status))
-    application.add_handler(CommandHandler('groups', groups_command))
-    application.add_handler(CommandHandler('reactions', get_message_reactions))
-    application.add_handler(CommandHandler('rules', rules))
-    application.add_handler(CommandHandler('about', about))
-    application.add_handler(CommandHandler('help', help_command))
-    
-    # ДОБАВЛЕНЫ ОБРАБОТЧИКИ ДЛЯ ЛАЙКОВ
-    application.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),
-        add_reaction_buttons
-    ))
-    application.add_handler(CallbackQueryHandler(handle_reaction, pattern='^(like|dislike)_'))
-    
-    application.add_error_handler(error_handler)
-    
-    print("🤖 Бот Avantyurist запущен!")
-    print("📊 Лимит вступлений: 3 раза")
-    print("📁 Кастомное меню установлено! Кнопка меню внизу экрана")
-    print("📋 Команда /groups доступна в меню")
-    print("👍 Система лайков/дизлайков активна")
-    print("🌐 API сервер запущен на порту " + str(os.environ.get('PORT', 5000)))
-    
+        BotCommand("rules", "📖 Ре
     application.run_polling()
 
 if __name__ == '__main__':
