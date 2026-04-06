@@ -586,6 +586,8 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ============ СИСТЕМА ЛАЙКОВ/ДИЗЛАЙКОВ ============
 
+# ============ СИСТЕМА ЛАЙКОВ/ДИЗЛАЙКОВ ============
+
 async def add_reaction_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Добавляет кнопки лайк/дизлайк к новым сообщениям в группе"""
     if not update.message or update.message.chat.type not in ['group', 'supergroup']:
@@ -594,13 +596,11 @@ async def add_reaction_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
     if update.message.from_user.is_bot:
         return
     
-    user_id = update.message.from_user.id
+    user = update.message.from_user
+    user_id = user.id
     
-      # Временно убираем проверку на верификацию
-    # user_data = db.get_user(user_id)
-    # if not user_data or not user_data.get('verified'):
-    #     return
-    pass
+    # Добавляем пользователя в рейтинг (если ещё не добавлен)
+    rating_db.add_or_update_user(user_id, user.username, user.first_name, user.last_name)
     
     message_id = update.message.message_id
     
@@ -647,10 +647,11 @@ async def handle_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = query.message.chat_id
     reaction_message_id = query.message.message_id
     
-    user_data = db.get_user(user_id)
-    if not user_data or not user_data.get('verified'):
-        await query.edit_message_text("❌ Вы не верифицированы! Пройдите /start")
-        return
+    # Убираем проверку на верификацию - теперь могут все
+    # user_data = db.get_user(user_id)
+    # if not user_data or not user_data.get('verified'):
+    #     await query.edit_message_text("❌ Вы не верифицированы! Пройдите /start")
+    #     return
     
     data_parts = query.data.split('_')
     reaction_type = data_parts[0]
@@ -666,7 +667,7 @@ async def handle_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
             original_message = await context.bot.get_message(chat_id, original_message_id)
         
         if not original_message:
-            await query.edit_message_text("❌ Не удалось найти оригинальное сообщение.")  # ИСПРАВЛЕНО
+            await query.edit_message_text("❌ Не удалось найти оригинальное сообщение.")
             return
         
         author_id = original_message.from_user.id
@@ -690,7 +691,7 @@ async def handle_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
             save_rating_to_github()
             await update_reaction_buttons(context, chat_id, original_message_id, reaction_message_id)
             
-            await query.edit_message_text(  # ИСПРАВЛЕНО
+            await query.edit_message_text(
                 f"{'✅ +10 к рейтингу' if new_reaction == 1 else '❌ -10 к рейтингу'}!\n"
                 f"Вы {'лайкнули' if new_reaction == 1 else 'дизлайкнули'} сообщение от @{original_message.from_user.username or 'пользователя'}."
             )
@@ -704,7 +705,7 @@ async def handle_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
             save_rating_to_github()
             await update_reaction_buttons(context, chat_id, original_message_id, reaction_message_id)
             
-            await query.edit_message_text(  # ИСПРАВЛЕНО
+            await query.edit_message_text(
                 f"🔄 Оценка изменена!\n"
                 f"Теперь: {'👍' if new_reaction == 1 else '👎'}\n"
                 f"Изменение рейтинга автора: {'+' if delta_for_author > 0 else ''}{delta_for_author}"
@@ -724,6 +725,7 @@ async def handle_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text("❌ Произошла ошибка при обработке оценки.")
         except:
             pass
+
 async def get_message_reactions(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда для просмотра реакций на сообщение (ответь на сообщение)"""
     if not update.message.reply_to_message:
@@ -762,6 +764,7 @@ async def post_init(application: Application):
     
     await application.bot.set_my_commands(commands)
     logger.info("✅ Кастомное меню команд установлено!")
+
 def run_api():
     """Запускает API сервер в отдельном потоке"""
     try:
@@ -772,6 +775,7 @@ def run_api():
         app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
     except Exception as e:
         logger.error(f"❌ Ошибка запуска API: {e}")
+
 def main():
     """Запуск бота"""
     
