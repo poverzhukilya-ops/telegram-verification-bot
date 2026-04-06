@@ -692,15 +692,25 @@ async def handle_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
             save_rating_to_github()
             await update_reaction_buttons(context, chat_id, original_message_id, reaction_message_id)
             
-                       # Отправляем НОВОЕ сообщение с результатом (не редактируем старое)
-            await context.bot.send_message(
+                                 # Отправляем сообщение с результатом
+            result_msg = await context.bot.send_message(
                 chat_id=chat_id,
                 text=f"{'✅ +10 к рейтингу' if new_reaction == 1 else '❌ -10 к рейтингу'}!\n"
                      f"Вы {'лайкнули' if new_reaction == 1 else 'дизлайкнули'} сообщение от @{original_message.from_user.username or 'пользователя'}."
             )
             
-            # Убираем кнопки ТОЛЬКО у этого пользователя
-            await query.edit_message_reply_markup(reply_markup=None)
+            # УДАЛЯЕМ всё сообщение бота у проголосовавшего
+            try:
+                await query.delete_message()
+            except:
+                pass
+            
+            # Удаляем сообщение с результатом через 3 секунды
+            await asyncio.sleep(3)
+            try:
+                await result_msg.delete()
+            except:
+                pass
             
         elif old_reaction != new_reaction:
             delta_for_author = (new_reaction - old_reaction) * 10
