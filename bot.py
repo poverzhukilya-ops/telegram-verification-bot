@@ -834,15 +834,105 @@ async def get_message_reactions(update: Update, context: ContextTypes.DEFAULT_TY
     )
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка ошибок"""
     logger.error(f"Ошибка: {context.error}")
 
 async def post_init(application: Application):
+    """Функция, которая выполняется после запуска бота"""
     commands = [
         BotCommand("start", "🚀 Начать регистрацию"),
         BotCommand("groups", "📁 Группы проектов"),
         BotCommand("status", "📊 Проверить статус"),
         BotCommand("reactions", "👍 Посмотреть оценки сообщения"),
-          BotCommand("rules", "📖 Регламент"),
+        BotCommand("rules", "📖 Регламент"),
+        BotCommand("about", "ℹ️ О сообществе"),
+        BotCommand("help", "🆘 Помощь"),
+    ]
+    
+    await application.bot.set_my_commands(commands)
+    logger.info("✅ Кастомное меню команд установлено!")
+
+def run_api():
+    """Запускает API сервер в отдельном потоке"""
+    try:
+        from api_server import app
+        port = int(os.environ.get('PORT', 5000))
+        logger.info(f"🚀 Запуск API сервера на порту {port}")
+        app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+    except Exception as e:
+        logger.error(f"❌ Ошибка запуска API: {e}")
+
+def main():
+    """Запуск бота"""
+    
+    # ЗАПУСКАЕМ API СЕРВЕР В ОТДЕЛЬНОМ ПОТОКЕ
+    api_thread = threading.Thread(target=run_api, daemon=True)
+    api_thread.start()
+    logger.info("✅ API сервер запущен в фоновом потоке")
+    
+    application = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
+    
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler('start', start)],
+        states={
+            STEP1_CAPTCHA: [
+                CallbackQueryHandler(start_step1, pattern='start_step1'),
+                CallbackQueryHandler(captcha_passed, pattern='captcha_passed'),
+            ],
+            STEP2_REGULATIONS: [
+                CallbackQueryHandler(regulations_read, pattern='regulations_read'),
+            ],
+        },
+        fallbacks=[
+            CommandHandler('cancel', cancel),
+            CommandHandler('start', start),
+        ],
+        allow_reentry=True,
+    )
+    
+    add_group_handler = ConversationHandler(
+        entry_points=[CallbackQueryHandler(add_group_start, pattern='add_group')],
+        states={
+            ADD_GROUP_NAME: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, add_group_name)
+            ],
+            ADD_GROUP_LINK: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, add_group_link)
+            ],
+        },
+        fallbacks=[CommandHandler('cancel', cancel)],
+        allow_reentry=True,
+    )
+    
+    application.add_handler(conv_handler)
+    application.add_handler(add_group_handler)
+    application.add_handler(CallbackQueryHandler(refresh_projects, pattern='refresh_projects'))
+    application.add_handler(CommandHandler('status', status))
+    application.add_handler(CommandHandler('groups', groups_command))
+    application.add_handler(CommandHandler('reactions', get_message_reactions))
+    application.add_handler(CommandHandler('rules', rules))
+    application.add_handler(CommandHandler('about', about))
+    application.add_handler(CommandHandler('help', help_command))
+    
+    # Обработчики для кнопок лайков
+    application.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),
+        add_reaction_buttons
+    ))
+    application.add_handler(CallbackQueryHandler(handle_reaction, pattern='^(like|dislike)_'))
+    
+    # Обработчик стандартных реакций Telegram
+    application.add_handler(MessageReactionHandler(handle_message_reaction))
+    
+    application.add_error_handler(error_handler)
+    
+    print("🤖 Бот Avantyurist запущен!")
+    print("📊 Лимит вступлений: 3 раза")
+    print("📁 Кастомное меню установлено! Кнопка меню внизу экрана")
+    print("📋 Команда /groups доступна в меню")
+    print("👍 Система лайков/дизлайков активна")
+    print("🌐 API сервер запущен на порту " + str(os.environ.get('PORT', 5000)))
+    
     application.run_polling()
 
 if __name__ == '__main__':
