@@ -611,7 +611,6 @@ async def add_reaction_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
     await update.message.reply_text(
         "💬 Оцените это сообщение:",
         reply_markup=reply_markup,
-        quote=True
     )
 
 async def update_reaction_buttons(context: ContextTypes.DEFAULT_TYPE, chat_id: int, message_id: int, reaction_message_id: int):
