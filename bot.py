@@ -594,9 +594,12 @@ async def add_reaction_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
     if update.message.from_user.is_bot:
         return
     
-    user_id = update.message.from_user.id
-    if user_id not in verified_users:
-        return
+   user_id = update.message.from_user.id
+
+# Проверяем через базу данных, а не через память
+user_data = db.get_user(user_id)
+if not user_data or not user_data.get('verified'):
+    return
     
     message_id = update.message.message_id
     
