@@ -584,12 +584,13 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return ConversationHandler.END
 
-# ============ СИСТЕМА ЛАЙКОВ/ДИЗЛАЙКОВ ============
-
-# ============ СИСТЕМА ЛАЙКОВ/ДИЗЛАЙКОВ ============
-
 async def add_reaction_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Добавляет кнопки лайк/дизлайк к новым сообщениям в группе"""
+    
+    # ДИАГНОСТИКА: пишем в лог каждого пользователя
+    if update.message and update.message.from_user:
+        logger.info(f"📨 Сообщение от {update.message.from_user.id} (@{update.message.from_user.username}) в чате {update.message.chat.type}")
+    
     if not update.message or update.message.chat.type not in ['group', 'supergroup']:
         return
     
