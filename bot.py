@@ -584,6 +584,8 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return ConversationHandler.END
 
+# ============ СИСТЕМА ЛАЙКОВ/ДИЗЛАЙКОВ ============
+
 async def add_reaction_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Добавляет кнопки лайк/дизлайк к новым сообщениям в группе"""
     
@@ -619,6 +621,7 @@ async def add_reaction_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
     )
     
     logger.info(f"✅ Кнопки добавлены под сообщением {message_id}")
+
 async def update_reaction_buttons(context: ContextTypes.DEFAULT_TYPE, chat_id: int, message_id: int, reaction_message_id: int):
     """Обновляет счётчики на кнопках"""
     try:
@@ -649,12 +652,6 @@ async def handle_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     chat_id = query.message.chat_id
     reaction_message_id = query.message.message_id
-    
-    # Убираем проверку на верификацию - теперь могут все
-    # user_data = db.get_user(user_id)
-    # if not user_data or not user_data.get('verified'):
-    #     await query.edit_message_text("❌ Вы не верифицированы! Пройдите /start")
-    #     return
     
     data_parts = query.data.split('_')
     reaction_type = data_parts[0]
@@ -694,18 +691,12 @@ async def handle_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
             save_rating_to_github()
             await update_reaction_buttons(context, chat_id, original_message_id, reaction_message_id)
             
-                                 # Отправляем сообщение с результатом
+            # Отправляем сообщение с результатом
             result_msg = await context.bot.send_message(
                 chat_id=chat_id,
                 text=f"{'✅ +10 к рейтингу' if new_reaction == 1 else '❌ -10 к рейтингу'}!\n"
                      f"Вы {'лайкнули' if new_reaction == 1 else 'дизлайкнули'} сообщение от @{original_message.from_user.username or 'пользователя'}."
             )
-            
-            # УДАЛЯЕМ всё сообщение бота у проголосовавшего
-            try:
-                await query.delete_message()
-            except:
-                pass
             
             # Удаляем сообщение с результатом через 3 секунды
             await asyncio.sleep(3)
@@ -723,22 +714,23 @@ async def handle_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
             save_rating_to_github()
             await update_reaction_buttons(context, chat_id, original_message_id, reaction_message_id)
             
-                      # Отправляем НОВОЕ сообщение с результатом
-            await context.bot.send_message(
+            # Отправляем сообщение с результатом
+            result_msg = await context.bot.send_message(
                 chat_id=chat_id,
                 text=f"🔄 Оценка изменена!\n"
                      f"Теперь: {'👍' if new_reaction == 1 else '👎'}\n"
                      f"Изменение рейтинга автора: {'+' if delta_for_author > 0 else ''}{delta_for_author}"
             )
             
-            # Убираем кнопки ТОЛЬКО у этого пользователя
-            await query.edit_message_reply_markup(reply_markup=None)
+            # Удаляем сообщение с результатом через 3 секунды
+            await asyncio.sleep(3)
+            try:
+                await result_msg.delete()
+            except:
+                pass
         
-        # Убираем кнопки только у проголосовавшего
-        try:
-            await query.edit_message_reply_markup(reply_markup=None)
-        except:
-            pass
+        else:
+            await query.answer("ℹ️ Вы уже оценили это сообщение.", show_alert=True)
             
     except Exception as e:
         logger.error(f"Ошибка при обработке реакции: {e}")
@@ -766,7 +758,6 @@ async def get_message_reactions(update: Update, context: ContextTypes.DEFAULT_TY
         f"📉 Рейтинг: {stats['likes'] - stats['dislikes']}",
         parse_mode='Markdown'
     )
-
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка ошибок"""
     logger.error(f"Ошибка: {context.error}")
