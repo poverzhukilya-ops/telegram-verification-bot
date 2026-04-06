@@ -646,9 +646,10 @@ async def handle_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = query.message.chat_id
     reaction_message_id = query.message.message_id
     
-    if user_id not in verified_users:
-        await query.edit_message_text("❌ Вы не верифицированы!")  # ИСПРАВЛЕНО
-        return
+    user_data = db.get_user(user_id)
+if not user_data or not user_data.get('verified'):
+    await query.edit_message_text("❌ Вы не верифицированы! Пройдите /start")
+    return
     
     data_parts = query.data.split('_')
     reaction_type = data_parts[0]
