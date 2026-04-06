@@ -756,9 +756,24 @@ async def post_init(application: Application):
     
     await application.bot.set_my_commands(commands)
     logger.info("✅ Кастомное меню команд установлено!")
-
+def run_api():
+    """Запускает API сервер в отдельном потоке"""
+    try:
+        from api_server import app
+        port = int(os.environ.get('PORT', 5000))
+        logger.info(f"🚀 Запуск API сервера на порту {port}")
+        # use_reloader=False важно, чтобы не создавать бесконечные потоки
+        app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+    except Exception as e:
+        logger.error(f"❌ Ошибка запуска API: {e}")
 def main():
     """Запуск бота"""
+    
+    # ЗАПУСКАЕМ API СЕРВЕР В ОТДЕЛЬНОМ ПОТОКЕ
+    api_thread = threading.Thread(target=run_api, daemon=True)
+    api_thread.start()
+    logger.info("✅ API сервер запущен в фоновом потоке")
+    
     application = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
     
     conv_handler = ConversationHandler(
@@ -798,7 +813,7 @@ def main():
     application.add_handler(CallbackQueryHandler(refresh_projects, pattern='refresh_projects'))
     application.add_handler(CommandHandler('status', status))
     application.add_handler(CommandHandler('groups', groups_command))
-    application.add_handler(CommandHandler('reactions', get_message_reactions))  # ДОБАВЛЕНО
+    application.add_handler(CommandHandler('reactions', get_message_reactions))
     application.add_handler(CommandHandler('rules', rules))
     application.add_handler(CommandHandler('about', about))
     application.add_handler(CommandHandler('help', help_command))
@@ -816,8 +831,10 @@ def main():
     print("📊 Лимит вступлений: 3 раза")
     print("📁 Кастомное меню установлено! Кнопка меню внизу экрана")
     print("📋 Команда /groups доступна в меню")
-    print("👍 Система лайков/
-      application.run_polling()
+    print("👍 Система лайков/дизлайков активна")
+    print("🌐 API сервер запущен на порту " + str(os.environ.get('PORT', 5000)))
+    
+    application.run_polling()
 
 if __name__ == '__main__':
     main()
