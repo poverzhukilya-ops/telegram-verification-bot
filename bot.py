@@ -587,37 +587,37 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def add_reaction_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Добавляет кнопки лайк/дизлайк к новым сообщениям в группе"""
     
-    # ДИАГНОСТИКА: пишем в лог каждого пользователя
-    if update.message and update.message.from_user:
-        logger.info(f"📨 Сообщение от {update.message.from_user.id} (@{update.message.from_user.username}) в чате {update.message.chat.type}")
-    
+    # Проверяем, что это сообщение из группы
     if not update.message or update.message.chat.type not in ['group', 'supergroup']:
         return
     
+    # Игнорируем сообщения от ботов
     if update.message.from_user.is_bot:
         return
     
+    # Получаем информацию о пользователе
     user = update.message.from_user
     user_id = user.id
     
-    # Добавляем пользователя в рейтинг (если ещё не добавлен)
+    # Диагностика в лог
+    logger.info(f"🔍 Бот видит сообщение от {user_id} (@{user.username})")
+    
+    # Добавляем пользователя в рейтинг (ЛЮБОГО пользователя)
     rating_db.add_or_update_user(user_id, user.username, user.first_name, user.last_name)
     
+    # Добавляем кнопки под сообщением
     message_id = update.message.message_id
-    
-    keyboard = [
-        [
-            InlineKeyboardButton("👍 0", callback_data=f"like_{message_id}"),
-            InlineKeyboardButton("👎 0", callback_data=f"dislike_{message_id}")
-        ]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    keyboard = [[
+        InlineKeyboardButton("👍 0", callback_data=f"like_{message_id}"),
+        InlineKeyboardButton("👎 0", callback_data=f"dislike_{message_id}")
+    ]]
     
     await update.message.reply_text(
         "💬 Оцените это сообщение:",
-        reply_markup=reply_markup
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
-
+    
+    logger.info(f"✅ Кнопки добавлены под сообщением {message_id}")
 async def update_reaction_buttons(context: ContextTypes.DEFAULT_TYPE, chat_id: int, message_id: int, reaction_message_id: int):
     """Обновляет счётчики на кнопках"""
     try:
