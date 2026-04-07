@@ -4,15 +4,19 @@ import os
 import requests
 import base64
 import asyncio
+import threading
+from collections import deque
 from datetime import datetime
 from typing import Dict
-from collections import deque
+
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, ConversationHandler, MessageHandler, filters, MessageReactionHandler
+from telegram.ext import (
+    Application, CommandHandler, CallbackQueryHandler, ContextTypes,
+    ConversationHandler, MessageHandler, filters, MessageReactionHandler, TypeHandler
+)
 
 from config import BOT_TOKEN, GROUP_ID, INVITE_LINK, ADMIN_ID, REGULATIONS_LINK, GROUPS_FILE, CHANNEL_LINK
 from database import db
-import threading
 from rating_db import rating_db
 
 # Настройка логирования
@@ -36,6 +40,11 @@ user_states = {}
 MAX_CACHE_SIZE = 1000
 reaction_cache = {}
 reaction_cache_order = deque()
+
+# Списки позитивных и негативных эмодзи
+POSITIVE_EMOJIS = {'👍', '❤️', '🔥', '🎉', '😍', '🥰', '💯', '😁', '🤩', '👌'}
+NEGATIVE_EMOJIS = {'👎', '😡', '🤬', '💩', '👎🏼', '😠', '👎🏻', '👎🏽'}
+
 
 # ============ ФУНКЦИЯ СОХРАНЕНИЯ РЕЙТИНГА В GITHUB ============
 def save_rating_to_github():
@@ -99,7 +108,8 @@ def save_rating_to_github():
         logger.error(f"❌ Ошибка: {e}")
         return False
 
-# ============ ОСТАЛЬНОЙ КОД ============
+
+# ============ ОСНОВНЫЕ ФУНКЦИИ БОТА ============
 
 def load_groups() -> Dict[str, str]:
     """Загружает группы из JSON файла"""
@@ -559,7 +569,8 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return ConversationHandler.END
 
-# ============ СИСТЕМА ЛАЙКОВ/ДИЗЛАЙКОВ ============
+
+# ============ СИСТЕМА ЛАЙКОВ/ДИЗЛАЙКОВ (КНОПКИ) ============
 
 async def add_reaction_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Добавляет кнопки лайк/дизлайк к новым сообщениям в группе"""
@@ -593,7 +604,7 @@ async def add_reaction_buttons(update: Update, context: ContextTypes.DEFAULT_TYP
     ]]
     
     await update.message.reply_text(
-        "    ",
+        "👍 0  👎 0",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
     
@@ -711,12 +722,16 @@ async def handle_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
 
+
 # ============ ОБРАБОТЧИК СТАНДАРТНЫХ РЕАКЦИЙ TELEGRAM ============
 
 async def handle_message_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обрабатывает стандартные реакции Telegram (👍/👎)"""
+    """Обрабатывает стандартные реакции Telegram (👍/👎 и другие эмодзи)"""
+    
+    logger.info(f"🔥 ПОЛУЧЕНА РЕАКЦИЯ: {update}")
     
     if not update.message_reaction:
+        logger.info("⚠️ Нет message_reaction в update")
         return
     
     reaction_update = update.message_reaction
@@ -724,27 +739,15 @@ async def handle_message_reaction(update: Update, context: ContextTypes.DEFAULT_
     message_id = reaction_update.message_id
     user = reaction_update.user
     
-    # Игнорируем реакции от ботов
     if user.is_bot:
         return
     
-    # Получаем новые реакции
-    new_reactions = reaction_update.new_reaction
+    # Получаем новые и старые реакции
+    new_reactions = [r.emoji for r in reaction_update.new_reaction] if reaction_update.new_reaction else []
+    old_reactions = [r.emoji for r in reaction_update.old_reaction] if reaction_update.old_reaction else []
     
-    # Проверяем, есть ли 👍 или 👎
-    has_like = any(r.emoji == '👍' for r in new_reactions)
-    has_dislike = any(r.emoji == '👎' for r in new_reactions)
-    
-    if not has_like and not has_dislike:
-        return
-    
-    # Определяем тип реакции
-    if has_like:
-        delta = 10
-        emoji = '👍'
-    else:
-        delta = -10
-        emoji = '👎'
+    logger.info(f"📊 Старые реакции: {old_reactions}")
+    logger.info(f"📊 Новые реакции: {new_reactions}")
     
     # Находим автора сообщения из кэша
     author_id = reaction_cache.get(message_id)
@@ -752,66 +755,53 @@ async def handle_message_reaction(update: Update, context: ContextTypes.DEFAULT_
         logger.warning(f"⚠️ Не найден автор для message_id {message_id}")
         return
     
-    # Нельзя оценивать свои сообщения
     if user.id == author_id:
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text=f"❌ Вы не можете оценивать свои сообщения!"
-        )
+        logger.info("❌ Пользователь оценивает своё сообщение")
         return
     
-    # Проверяем, не ставил ли уже этот пользователь реакцию
-    old_reaction = rating_db.get_user_reaction(message_id, user.id)
+    # Вычисляем дельту рейтинга
+    delta = 0
     
-    if old_reaction is None:
-        # Первая реакция
-        rating_db.save_reaction(message_id, user.id, author_id, delta // 10)
-        rating_db.update_rating(author_id, 'reaction', delta, 
-                                f"{'Лайк' if delta > 0 else 'Дизлайк'} от пользователя {user.id}")
-        
-        save_rating_to_github()
-        
-        # Отправляем уведомление
-        msg = await context.bot.send_message(
-            chat_id=chat_id,
-            text=f"{'✅ +10 к рейтингу' if delta > 0 else '❌ -10 к рейтингу'}!\n"
-                 f"Пользователь @{user.username or user.first_name} "
-                 f"{'лайкнул' if delta > 0 else 'дизлайкнул'} сообщение {emoji}"
-        )
-        
-        await asyncio.sleep(3)
-        try:
-            await msg.delete()
-        except:
-            pass
-            
-    elif old_reaction != (delta // 10):
-        # Смена реакции
-        old_delta = old_reaction * 10
-        delta_for_author = delta - old_delta
-        
-        rating_db.update_reaction(message_id, user.id, delta // 10)
-        rating_db.update_rating(author_id, 'reaction_change', delta_for_author, 
-                                f"Смена реакции: {old_reaction} -> {delta // 10} от {user.id}")
-        
-        save_rating_to_github()
-        
-        # Отправляем уведомление
-        msg = await context.bot.send_message(
-            chat_id=chat_id,
-            text=f"🔄 Оценка изменена!\n"
-                 f"Теперь: {emoji}\n"
-                 f"Изменение рейтинга: {'+' if delta_for_author > 0 else ''}{delta_for_author}"
-        )
-        
-        await asyncio.sleep(3)
-        try:
-            await msg.delete()
-        except:
-            pass
-    else:
-        # Та же реакция (игнорируем)
+    # Убираем старые реакции
+    for emoji in old_reactions:
+        if emoji in POSITIVE_EMOJIS:
+            delta -= 10
+        elif emoji in NEGATIVE_EMOJIS:
+            delta += 10
+    
+    # Добавляем новые реакции
+    for emoji in new_reactions:
+        if emoji in POSITIVE_EMOJIS:
+            delta += 10
+        elif emoji in NEGATIVE_EMOJIS:
+            delta -= 10
+    
+    if delta == 0:
+        logger.info("ℹ️ Нет изменений рейтинга")
+        return
+    
+    # Обновляем рейтинг
+    rating_db.update_rating(author_id, 'reaction', delta, 
+                            f"Реакция от {user.id}: {old_reactions} -> {new_reactions}")
+    
+    save_rating_to_github()
+    
+    # Отправляем уведомление
+    msg = await context.bot.send_message(
+        chat_id=chat_id,
+        text=f"{'✅ +' if delta > 0 else '❌ '}{delta} к рейтингу!\n"
+             f"Пользователь @{user.username or user.first_name} "
+             f"{'поставил' if new_reactions else 'убрал'} {new_reactions if new_reactions else old_reactions}"
+    )
+    
+    await asyncio.sleep(3)
+    try:
+        await msg.delete()
+    except:
         pass
+
+
+# ============ ДОПОЛНИТЕЛЬНЫЕ КОМАНДЫ ============
 
 async def get_message_reactions(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда для просмотра реакций на сообщение (ответь на сообщение)"""
@@ -833,12 +823,26 @@ async def get_message_reactions(update: Update, context: ContextTypes.DEFAULT_TY
         parse_mode='Markdown'
     )
 
+
+# ============ ДИАГНОСТИКА ============
+
+async def raw_update_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик всех входящих обновлений для диагностики"""
+    logger.info(f"📦 RAW UPDATE: {update}")
+
+
+# ============ ОБРАБОТКА ОШИБОК ============
+
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка ошибок"""
     logger.error(f"Ошибка: {context.error}")
 
+
+# ============ НАСТРОЙКА МЕНЮ ============
+
 async def post_init(application: Application):
-    """Функция, которая выполняется после запуска бота"""
+    commands = [
+        BotCommand("start", "
+                   async def post_init(application: Application):
     commands = [
         BotCommand("start", "🚀 Начать регистрацию"),
         BotCommand("groups", "📁 Группы проектов"),
@@ -852,6 +856,9 @@ async def post_init(application: Application):
     await application.bot.set_my_commands(commands)
     logger.info("✅ Кастомное меню команд установлено!")
 
+
+# ============ API СЕРВЕР В ОТДЕЛЬНОМ ПОТОКЕ ============
+
 def run_api():
     """Запускает API сервер в отдельном потоке"""
     try:
@@ -862,15 +869,22 @@ def run_api():
     except Exception as e:
         logger.error(f"❌ Ошибка запуска API: {e}")
 
+
+# ============ ГЛАВНАЯ ФУНКЦИЯ ============
+
 def main():
     """Запуск бота"""
     
-    # ЗАПУСКАЕМ API СЕРВЕР В ОТДЕЛЬНОМ ПОТОКЕ
+    # Запуск API сервера
     api_thread = threading.Thread(target=run_api, daemon=True)
     api_thread.start()
     logger.info("✅ API сервер запущен в фоновом потоке")
     
+    # Создаём приложение
     application = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
+    
+    # ДИАГНОСТИКА: ловим все обновления (раскомментируй при необходимости)
+    # application.add_handler(TypeHandler(Update, raw_update_handler), group=-1)
     
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
@@ -921,8 +935,8 @@ def main():
     ))
     application.add_handler(CallbackQueryHandler(handle_reaction, pattern='^(like|dislike)_'))
     
-    # Обработчик стандартных реакций Telegram (временно отключён, пока не обновим библиотеку)
-    # application.add_handler(MessageReactionHandler(handle_message_reaction))
+    # Обработчик стандартных реакций Telegram
+    application.add_handler(MessageReactionHandler(handle_message_reaction))
     
     application.add_error_handler(error_handler)
     
@@ -933,8 +947,9 @@ def main():
     print("👍 Система лайков/дизлайков активна")
     print("🌐 API сервер запущен на порту " + str(os.environ.get('PORT', 5000)))
     
-    application.run_polling()
+    # Запускаем polling с указанием allowed_updates
+    application.run_polling(allowed_updates=["message", "callback_query", "message_reaction", "message_reaction_count"])
+
 
 if __name__ == '__main__':
     main()
-  
