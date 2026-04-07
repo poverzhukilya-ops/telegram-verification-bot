@@ -841,9 +841,6 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def post_init(application: Application):
     commands = [
-        BotCommand("start", "
-                   async def post_init(application: Application):
-    commands = [
         BotCommand("start", "🚀 Начать регистрацию"),
         BotCommand("groups", "📁 Группы проектов"),
         BotCommand("status", "📊 Проверить статус"),
@@ -855,7 +852,6 @@ async def post_init(application: Application):
     
     await application.bot.set_my_commands(commands)
     logger.info("✅ Кастомное меню команд установлено!")
-
 
 # ============ API СЕРВЕР В ОТДЕЛЬНОМ ПОТОКЕ ============
 
