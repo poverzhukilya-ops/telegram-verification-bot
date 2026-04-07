@@ -12,7 +12,7 @@ from typing import Dict
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler, ContextTypes,
-    ConversationHandler, MessageHandler, filters, MessageReactionHandler, TypeHandler
+    ConversationHandler, MessageHandler, filters, MessageReactionHandler
 )
 
 from config import BOT_TOKEN, GROUP_ID, INVITE_LINK, ADMIN_ID, REGULATIONS_LINK, GROUPS_FILE, CHANNEL_LINK
@@ -107,6 +107,27 @@ def save_rating_to_github():
     except Exception as e:
         logger.error(f"❌ Ошибка: {e}")
         return False
+
+
+# ============ СОХРАНЕНИЕ АВТОРА СООБЩЕНИЯ ============
+async def save_message_author(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Сохраняет автора сообщения для будущих реакций"""
+    if update.message and update.message.from_user and not update.message.from_user.is_bot:
+        user_id = update.message.from_user.id
+        message_id = update.message.message_id
+        
+        # Сохраняем связь message_id -> author_id
+        global reaction_cache, reaction_cache_order
+        reaction_cache[message_id] = user_id
+        reaction_cache_order.append(message_id)
+        if len(reaction_cache_order) > MAX_CACHE_SIZE:
+            oldest = reaction_cache_order.popleft()
+            reaction_cache.pop(oldest, None)
+        
+        # Добавляем пользователя в рейтинг
+        user = update.message.from_user
+        rating_db.add_or_update_user(user_id, user.username, user.first_name, user.last_name)
+        logger.info(f"📝 Сохранён автор сообщения {message_id} -> {user_id}")
 
 
 # ============ ОСНОВНЫЕ ФУНКЦИИ БОТА ============
@@ -570,168 +591,12 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 
-# ============ СИСТЕМА ЛАЙКОВ/ДИЗЛАЙКОВ (КНОПКИ) ============
-
-async def add_reaction_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Добавляет кнопки лайк/дизлайк к новым сообщениям в группе"""
-    
-    if not update.message or update.message.chat.type not in ['group', 'supergroup']:
-        return
-    
-    if update.message.from_user.is_bot:
-        return
-    
-    user = update.message.from_user
-    user_id = user.id
-    
-    logger.info(f"🔍 Бот видит сообщение от {user_id} (@{user.username})")
-    
-    rating_db.add_or_update_user(user_id, user.username, user.first_name, user.last_name)
-    
-    message_id = update.message.message_id
-    
-    # Сохраняем связь message_id -> author_id для обработки стандартных реакций
-    global reaction_cache, reaction_cache_order
-    reaction_cache[message_id] = user_id
-    reaction_cache_order.append(message_id)
-    if len(reaction_cache_order) > MAX_CACHE_SIZE:
-        oldest = reaction_cache_order.popleft()
-        reaction_cache.pop(oldest, None)
-    
-    keyboard = [[
-        InlineKeyboardButton("👍 0", callback_data=f"like_{message_id}"),
-        InlineKeyboardButton("👎 0", callback_data=f"dislike_{message_id}")
-    ]]
-    
-    await update.message.reply_text(
-        "👍 0  👎 0",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-    
-    logger.info(f"✅ Кнопки добавлены под сообщением {message_id}")
-
-async def update_reaction_buttons(context: ContextTypes.DEFAULT_TYPE, chat_id: int, message_id: int, reaction_message_id: int):
-    """Обновляет счётчики на кнопках"""
-    try:
-        stats = rating_db.get_message_reaction_stats(message_id)
-        
-        keyboard = [
-            [
-                InlineKeyboardButton(f"👍 {stats['likes']}", callback_data=f"like_{message_id}"),
-                InlineKeyboardButton(f"👎 {stats['dislikes']}", callback_data=f"dislike_{message_id}")
-            ]
-        ]
-        
-        await context.bot.edit_message_text(
-            chat_id=chat_id,
-            message_id=reaction_message_id,
-            text=f"👍 {stats['likes']}  👎 {stats['dislikes']}",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-    except Exception as e:
-        logger.error(f"Ошибка обновления кнопок: {e}")
-
-async def handle_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обрабатывает нажатия на кнопки лайк/дизлайк"""
-    query = update.callback_query
-    await query.answer()
-    
-    user_id = query.from_user.id
-    chat_id = query.message.chat_id
-    reaction_message_id = query.message.message_id
-    
-    data_parts = query.data.split('_')
-    reaction_type = data_parts[0]
-    original_message_id = int(data_parts[1])
-    
-    new_reaction = 1 if reaction_type == 'like' else -1
-    
-    try:
-        original_message = None
-        if query.message.reply_to_message:
-            original_message = query.message.reply_to_message
-        else:
-            original_message = await context.bot.get_message(chat_id, original_message_id)
-        
-        if not original_message:
-            await query.edit_message_text("❌ Не удалось найти оригинальное сообщение.")
-            return
-        
-        author_id = original_message.from_user.id
-        
-        if user_id == author_id:
-            await query.answer("❌ Вы не можете оценивать свои сообщения!", show_alert=True)
-            return
-        
-        rating_db.init_reactions_table()
-        
-        old_reaction = rating_db.get_user_reaction(original_message_id, user_id)
-        
-        delta_for_author = 0
-        
-        if old_reaction is None:
-            delta_for_author = new_reaction * 10
-            rating_db.save_reaction(original_message_id, user_id, author_id, new_reaction)
-            rating_db.update_rating(author_id, 'reaction', delta_for_author, 
-                                    f"{'Лайк' if new_reaction == 1 else 'Дизлайк'} от пользователя {user_id}")
-            
-            save_rating_to_github()
-            await update_reaction_buttons(context, chat_id, original_message_id, reaction_message_id)
-            
-            result_msg = await context.bot.send_message(
-                chat_id=chat_id,
-                text=f"{'✅ +10 к рейтингу' if new_reaction == 1 else '❌ -10 к рейтингу'}!\n"
-                     f"Вы {'лайкнули' if new_reaction == 1 else 'дизлайкнули'} сообщение от @{original_message.from_user.username or 'пользователя'}."
-            )
-            
-            await asyncio.sleep(3)
-            try:
-                await result_msg.delete()
-            except:
-                pass
-            
-        elif old_reaction != new_reaction:
-            delta_for_author = (new_reaction - old_reaction) * 10
-            rating_db.update_reaction(original_message_id, user_id, new_reaction)
-            rating_db.update_rating(author_id, 'reaction_change', delta_for_author, 
-                                    f"Смена оценки: {old_reaction} -> {new_reaction} от пользователя {user_id}")
-            
-            save_rating_to_github()
-            await update_reaction_buttons(context, chat_id, original_message_id, reaction_message_id)
-            
-            result_msg = await context.bot.send_message(
-                chat_id=chat_id,
-                text=f"🔄 Оценка изменена!\n"
-                     f"Теперь: {'👍' if new_reaction == 1 else '👎'}\n"
-                     f"Изменение рейтинга автора: {'+' if delta_for_author > 0 else ''}{delta_for_author}"
-            )
-            
-            await asyncio.sleep(3)
-            try:
-                await result_msg.delete()
-            except:
-                pass
-        
-        else:
-            await query.answer("ℹ️ Вы уже оценили это сообщение.", show_alert=True)
-            
-    except Exception as e:
-        logger.error(f"Ошибка при обработке реакции: {e}")
-        try:
-            await query.edit_message_text("❌ Произошла ошибка при обработке оценки.")
-        except:
-            pass
-
-
 # ============ ОБРАБОТЧИК СТАНДАРТНЫХ РЕАКЦИЙ TELEGRAM ============
 
 async def handle_message_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обрабатывает стандартные реакции Telegram (👍/👎 и другие эмодзи)"""
     
-    logger.info(f"🔥 ПОЛУЧЕНА РЕАКЦИЯ: {update}")
-    
     if not update.message_reaction:
-        logger.info("⚠️ Нет message_reaction в update")
         return
     
     reaction_update = update.message_reaction
@@ -746,8 +611,7 @@ async def handle_message_reaction(update: Update, context: ContextTypes.DEFAULT_
     new_reactions = [r.emoji for r in reaction_update.new_reaction] if reaction_update.new_reaction else []
     old_reactions = [r.emoji for r in reaction_update.old_reaction] if reaction_update.old_reaction else []
     
-    logger.info(f"📊 Старые реакции: {old_reactions}")
-    logger.info(f"📊 Новые реакции: {new_reactions}")
+    logger.info(f"📊 Реакция на {message_id}: {old_reactions} -> {new_reactions} от {user.id}")
     
     # Находим автора сообщения из кэша
     author_id = reaction_cache.get(message_id)
@@ -756,20 +620,17 @@ async def handle_message_reaction(update: Update, context: ContextTypes.DEFAULT_
         return
     
     if user.id == author_id:
-        logger.info("❌ Пользователь оценивает своё сообщение")
         return
     
     # Вычисляем дельту рейтинга
     delta = 0
     
-    # Убираем старые реакции
     for emoji in old_reactions:
         if emoji in POSITIVE_EMOJIS:
             delta -= 10
         elif emoji in NEGATIVE_EMOJIS:
             delta += 10
     
-    # Добавляем новые реакции
     for emoji in new_reactions:
         if emoji in POSITIVE_EMOJIS:
             delta += 10
@@ -777,7 +638,6 @@ async def handle_message_reaction(update: Update, context: ContextTypes.DEFAULT_
             delta -= 10
     
     if delta == 0:
-        logger.info("ℹ️ Нет изменений рейтинга")
         return
     
     # Обновляем рейтинг
@@ -785,20 +645,7 @@ async def handle_message_reaction(update: Update, context: ContextTypes.DEFAULT_
                             f"Реакция от {user.id}: {old_reactions} -> {new_reactions}")
     
     save_rating_to_github()
-    
-    # Отправляем уведомление
-    msg = await context.bot.send_message(
-        chat_id=chat_id,
-        text=f"{'✅ +' if delta > 0 else '❌ '}{delta} к рейтингу!\n"
-             f"Пользователь @{user.username or user.first_name} "
-             f"{'поставил' if new_reactions else 'убрал'} {new_reactions if new_reactions else old_reactions}"
-    )
-    
-    await asyncio.sleep(3)
-    try:
-        await msg.delete()
-    except:
-        pass
+    logger.info(f"✅ Рейтинг обновлён: {delta} для автора {author_id}")
 
 
 # ============ ДОПОЛНИТЕЛЬНЫЕ КОМАНДЫ ============
@@ -824,13 +671,6 @@ async def get_message_reactions(update: Update, context: ContextTypes.DEFAULT_TY
     )
 
 
-# ============ ДИАГНОСТИКА ============
-
-async def raw_update_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик всех входящих обновлений для диагностики"""
-    logger.info(f"📦 RAW UPDATE: {update}")
-
-
 # ============ ОБРАБОТКА ОШИБОК ============
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -852,6 +692,7 @@ async def post_init(application: Application):
     
     await application.bot.set_my_commands(commands)
     logger.info("✅ Кастомное меню команд установлено!")
+
 
 # ============ API СЕРВЕР В ОТДЕЛЬНОМ ПОТОКЕ ============
 
@@ -879,9 +720,10 @@ def main():
     # Создаём приложение
     application = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
     
-    # ДИАГНОСТИКА: ловим все обновления (раскомментируй при необходимости)
-    # application.add_handler(TypeHandler(Update, raw_update_handler), group=-1)
+    # Сохранение авторов сообщений
+    application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, save_message_author))
     
+    # Регистрация
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
@@ -924,13 +766,6 @@ def main():
     application.add_handler(CommandHandler('about', about))
     application.add_handler(CommandHandler('help', help_command))
     
-    # Обработчики для кнопок лайков
-    application.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),
-        add_reaction_buttons
-    ))
-    application.add_handler(CallbackQueryHandler(handle_reaction, pattern='^(like|dislike)_'))
-    
     # Обработчик стандартных реакций Telegram
     application.add_handler(MessageReactionHandler(handle_message_reaction))
     
@@ -938,9 +773,9 @@ def main():
     
     print("🤖 Бот Avantyurist запущен!")
     print("📊 Лимит вступлений: 3 раза")
-    print("📁 Кастомное меню установлено! Кнопка меню внизу экрана")
+    print("📁 Кастомное меню установлено!")
     print("📋 Команда /groups доступна в меню")
-    print("👍 Система лайков/дизлайков активна")
+    print("🔥 Отслеживание стандартных реакций Telegram активно")
     print("🌐 API сервер запущен на порту " + str(os.environ.get('PORT', 5000)))
     
     # Запускаем polling с указанием allowed_updates
