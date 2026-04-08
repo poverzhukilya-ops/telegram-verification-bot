@@ -104,7 +104,7 @@ class RatingDB:
             if not cursor.fetchone():
                 cursor.execute('''
                     INSERT INTO rating (user_id, points, level, last_updated)
-                    VALUES (?, 100, 1, ?)
+                    VALUES (?, 0, 1, ?)
                 ''', (user_id, datetime.now()))
             
             conn.commit()
