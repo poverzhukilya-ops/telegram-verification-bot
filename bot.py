@@ -87,7 +87,7 @@ def save_rating_to_github():
         }
         
         response = requests.get(url, headers=headers)
-        sha = response.json().get('sha') if response.status_code == 200 else None
+        sha = response.json().get('sha') if response.status_code == 0 else None
         
         commit_data = {
             "message": f"Update rating {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
