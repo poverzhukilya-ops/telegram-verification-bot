@@ -192,7 +192,7 @@ class RatingDB:
                     r.reputation
                 FROM users u
                 JOIN rating r ON u.user_id = r.user_id
-                WHERE u.status = 'active'
+                WHERE u.status = 'active' OR u.status = 'neutral'
                 ORDER BY r.points DESC, r.reputation DESC
                 LIMIT ?
             ''', (limit,))
