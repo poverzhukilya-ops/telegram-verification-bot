@@ -173,7 +173,29 @@ class RatingDB:
             
             conn.commit()
     
-        def get_rating_list(self, limit=50):
+           def get_user_rating(self, user_id):
+        """Получение рейтинга конкретного пользователя"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT 
+                    u.username,
+                    u.first_name,
+                    u.last_name,
+                    r.points,
+                    r.level,
+                    r.projects_participated,
+                    r.projects_created,
+                    r.total_investments,
+                    r.reputation
+                FROM users u
+                JOIN rating r ON u.user_id = r.user_id
+                WHERE u.user_id = ?
+            ''', (user_id,))
+            
+            return cursor.fetchone()
+    
+    def get_rating_list(self, limit=50):
         """Получение списка рейтинга (все пользователи)"""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
@@ -197,28 +219,6 @@ class RatingDB:
             ''', (limit,))
             
             return cursor.fetchall()
-    
-    def get_user_rating(self, user_id):
-        """Получение рейтинга конкретного пользователя"""
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                SELECT 
-                    u.username,
-                    u.first_name,
-                    u.last_name,
-                    r.points,
-                    r.level,
-                    r.projects_participated,
-                    r.projects_created,
-                    r.total_investments,
-                    r.reputation
-                FROM users u
-                JOIN rating r ON u.user_id = r.user_id
-                WHERE u.user_id = ?
-            ''', (user_id,))
-            
-            return cursor.fetchone()
     
     def get_stats(self):
         """Получение общей статистики"""
