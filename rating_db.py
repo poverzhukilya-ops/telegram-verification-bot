@@ -82,27 +82,29 @@ class RatingDB:
             ''')
             
             cursor.execute('''
-                CREATE INDEX IF NOT EXISTS idx_author_reactions 
-                ON message_reactions(author_id)
-            ''')
+                   def add_or_update_user(self, user_id, username, first_name, last_name):
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT OR REPLACE INTO users 
+                (user_id, username, first_name, last_name, last_active, join_date)
+                VALUES (?, ?, ?, ?, ?, COALESCE((SELECT join_date FROM users WHERE user_id = ?), ?))
+            ''', (user_id, username, first_name, last_name, datetime.now(), user_id, datetime.now()))
+            
+            # Проверяем, есть ли пользователь в таблице рейтинга
+            cursor.execute('SELECT user_id FROM rating WHERE user_id = ?', (user_id,))
+            if not cursor.fetchone():
+                cursor.execute('''
+                    INSERT INTO rating (user_id, points, level, last_updated)
+                    VALUES (?, 0, 1, ?)
+                ''', (user_id, datetime.now()))
+            else:
+                # Если есть, обновляем только last_updated, но не меняем points
+                cursor.execute('''
+                    UPDATE rating SET last_updated = ? WHERE user_id = ?
+                ''', (datetime.now(), user_id))
             
             conn.commit()
-            logger.info("База данных рейтинга инициализирована")
-    
-   def add_or_update_user(self, user_id, username, first_name, last_name):
-    with sqlite3.connect(self.db_path) as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT OR REPLACE INTO users 
-            (user_id, username, first_name, last_name, last_active, join_date)
-            VALUES (?, ?, ?, ?, ?, COALESCE((SELECT join_date FROM users WHERE user_id = ?), ?))
-        ''', (user_id, username, first_name, last_name, datetime.now(), user_id, datetime.now()))
-        
-        # Проверяем, есть ли пользователь в таблице рейтинга
-        cursor.execute('SELECT user_id FROM rating WHERE user_id = ?', (user_id,))
-        if not cursor.fetchone():
-            cursor.execute('''
-                INSERT INTO rating (user_id, points, level, last_updated)
                 VALUES (?, 0, 1, ?)  # ← 0 вместо 100
             ''', (user_id, datetime.now()))
         else:
