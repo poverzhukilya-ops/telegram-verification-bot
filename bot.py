@@ -397,7 +397,7 @@ async def regulations_read(update: Update, context: ContextTypes.DEFAULT_TYPE):
     }
     
     rating_db.add_or_update_user(user_id, user.username, user.first_name, user.last_name)
-    rating_db.update_rating(user_id, 'registration', 100, 'Бонус за регистрацию в сообществе')
+       # rating_db.update_rating(user_id, 'registration', 100, 'Бонус за регистрацию в сообществе')
     
     save_rating_to_github()
     
