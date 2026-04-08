@@ -173,7 +173,7 @@ class RatingDB:
             
             conn.commit()
     
-           def get_user_rating(self, user_id):
+    def get_user_rating(self, user_id):
         """Получение рейтинга конкретного пользователя"""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
@@ -196,7 +196,7 @@ class RatingDB:
             return cursor.fetchone()
     
     def get_rating_list(self, limit=50):
-        """Получение списка рейтинга (все пользователи)"""
+        """Получение списка рейтинга"""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute('''
@@ -231,7 +231,6 @@ class RatingDB:
                     SUM(projects_participated + projects_created) as total_projects
                 FROM users u
                 JOIN rating r ON u.user_id = r.user_id
-                WHERE u.status = 'active'
             ''')
             result = cursor.fetchone()
             
