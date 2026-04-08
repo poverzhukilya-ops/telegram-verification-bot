@@ -32,7 +32,7 @@ class RatingDB:
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS rating (
                     user_id INTEGER PRIMARY KEY,
-                    points INTEGER DEFAULT 100,
+                    points INTEGER DEFAULT 0,
                     level INTEGER DEFAULT 1,
                     projects_participated INTEGER DEFAULT 0,
                     projects_created INTEGER DEFAULT 0,
@@ -57,7 +57,7 @@ class RatingDB:
                 )
             ''')
             
-            # НОВАЯ ТАБЛИЦА: Таблица реакций на сообщения
+            # Таблица реакций на сообщения
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS message_reactions (
                     message_id INTEGER NOT NULL,
@@ -70,7 +70,7 @@ class RatingDB:
                 )
             ''')
             
-            # НОВАЯ ТАБЛИЦА: Индексы для быстрого поиска
+            # Индексы
             cursor.execute('''
                 CREATE INDEX IF NOT EXISTS idx_message_author 
                 ON message_reactions(message_id, author_id)
@@ -82,7 +82,15 @@ class RatingDB:
             ''')
             
             cursor.execute('''
-                   def add_or_update_user(self, user_id, username, first_name, last_name):
+                CREATE INDEX IF NOT EXISTS idx_author_reactions 
+                ON message_reactions(author_id)
+            ''')
+            
+            conn.commit()
+            logger.info("База данных рейтинга инициализирована")
+    
+    def add_or_update_user(self, user_id, username, first_name, last_name):
+        """Добавление или обновление пользователя"""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute('''
@@ -105,15 +113,6 @@ class RatingDB:
                 ''', (datetime.now(), user_id))
             
             conn.commit()
-                VALUES (?, 0, 1, ?)  # ← 0 вместо 100
-            ''', (user_id, datetime.now()))
-        else:
-            # Если есть, обновляем только last_updated, но не меняем points
-            cursor.execute('''
-                UPDATE rating SET last_updated = ? WHERE user_id = ?
-            ''', (datetime.now(), user_id))
-        
-        conn.commit()
     
     def update_rating(self, user_id, action_type, points_change, description=""):
         """Обновление рейтинга пользователя"""
@@ -130,7 +129,7 @@ class RatingDB:
             # Обновляем уровень (каждые 100 очков = новый уровень)
             cursor.execute('''
                 UPDATE rating 
-                SET level = (points / ) + 1
+                SET level = (points / 100) + 1
                 WHERE user_id = ?
             ''', (user_id,))
             
@@ -249,11 +248,10 @@ class RatingDB:
                 'avg_points': avg_points
             }
     
-    # ============ НОВЫЕ МЕТОДЫ ДЛЯ СИСТЕМЫ ЛАЙКОВ/ДИЗЛАЙКОВ ============
+    # ============ МЕТОДЫ ДЛЯ РЕАКЦИЙ ============
     
     def init_reactions_table(self):
-        """Инициализация таблицы реакций (вызывается автоматически при первом использовании)"""
-        # Таблица уже создана в init_db, но оставляем метод для совместимости
+        """Инициализация таблицы реакций"""
         pass
     
     def get_user_reaction(self, message_id: int, user_id: int):
@@ -306,9 +304,7 @@ class RatingDB:
         """Получить общее количество реакций, поставленных пользователем"""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
-            cursor.execute('''
-                SELECT COUNT(*) FROM message_reactions WHERE user_id = ?
-            ''', (user_id,))
+            cursor.execute('SELECT COUNT(*) FROM message_reactions WHERE user_id = ?', (user_id,))
             return cursor.fetchone()[0] or 0
     
     def get_user_total_reactions_received(self, user_id: int):
@@ -326,7 +322,7 @@ class RatingDB:
             return {'likes': result[0] or 0, 'dislikes': result[1] or 0}
     
     def get_reaction_net_score(self, user_id: int):
-        """Получить чистый счёт реакций пользователя (лайки - дизлайки)"""
+        """Получить чистый счёт реакций пользователя"""
         stats = self.get_user_total_reactions_received(user_id)
         return stats['likes'] - stats['dislikes']
 
