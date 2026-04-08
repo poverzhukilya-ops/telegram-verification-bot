@@ -124,7 +124,7 @@ class RatingDB:
             # Обновляем уровень (каждые 100 очков = новый уровень)
             cursor.execute('''
                 UPDATE rating 
-                SET level = (points / 100) + 1
+                SET level = (points / ) + 1
                 WHERE user_id = ?
             ''', (user_id,))
             
