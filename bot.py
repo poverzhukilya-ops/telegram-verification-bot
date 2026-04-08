@@ -688,6 +688,7 @@ async def post_init(application: Application):
         BotCommand("rules", "📖 Регламент"),
         BotCommand("about", "ℹ️ О сообществе"),
         BotCommand("help", "🆘 Помощь"),
+        BotCommand("sync", "👥 Синхронизировать участников (админ)"),
     ]
     
     await application.bot.set_my_commands(commands)
