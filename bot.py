@@ -708,9 +708,58 @@ def run_api():
 
 
 # ============ ГЛАВНАЯ ФУНКЦИЯ ============
+def load_verified_users_from_db():
+    """Загружает верифицированных пользователей из БД при запуске бота"""
+    global verified_users
+    try:
+        with sqlite3.connect('verification.db') as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT user_id, username, first_name FROM users WHERE verified = 1")
+            rows = cursor.fetchall()
+            
+            for row in rows:
+                user_id = row[0]
+                verified_users[user_id] = {
+                    'username': row[1],
+                    'first_name': row[2],
+                    'verified_at': datetime.now().isoformat(),
+                    'regulations_read': True,
+                    'join_count': 1
+                }
+            logger.info(f"✅ Загружено {len(rows)} верифицированных пользователей из БД")
+    except Exception as e:
+        logger.error(f"❌ Ошибка загрузки пользователей из БД: {e}")
 
+async def sync_all_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Синхронизирует всех участников группы (только админ)"""
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Только для админа!")
+        return
+    
+    await update.message.reply_text("🔄 Синхронизация участников...")
+    
+    try:
+        chat_id = GROUP_ID
+        users_found = {}
+        count = 0
+        
+        async for message in context.bot.get_chat_history(chat_id, limit=500):
+            if message.from_user and not message.from_user.is_bot:
+                user = message.from_user
+                if user.id not in users_found:
+                    users_found[user.id] = user
+                    rating_db.add_or_update_user(user.id, user.username, user.first_name, user.last_name)
+                    count += 1
+        
+        await update.message.reply_text(f"✅ Синхронизировано {count} участников!")
+        
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка: {e}")
 def main():
     """Запуск бота"""
+    
+    # Загружаем верифицированных пользователей из БД
+    load_verified_users_from_db()
     
     # Запуск API сервера
     api_thread = threading.Thread(target=run_api, daemon=True)
@@ -766,6 +815,9 @@ def main():
     application.add_handler(CommandHandler('about', about))
     application.add_handler(CommandHandler('help', help_command))
     
+    # Команда для синхронизации всех участников (админ)
+    application.add_handler(CommandHandler('sync', sync_all_users))
+    
     # Обработчик стандартных реакций Telegram
     application.add_handler(MessageReactionHandler(handle_message_reaction))
     
@@ -777,6 +829,7 @@ def main():
     print("📋 Команда /groups доступна в меню")
     print("🔥 Отслеживание стандартных реакций Telegram активно")
     print("🌐 API сервер запущен на порту " + str(os.environ.get('PORT', 5000)))
+    print("👥 Для синхронизации участников используйте /sync (админ)")
     
     # Запускаем polling с указанием allowed_updates
     application.run_polling(allowed_updates=["message", "callback_query", "message_reaction", "message_reaction_count"])
