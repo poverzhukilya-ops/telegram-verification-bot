@@ -87,14 +87,24 @@ def save_rating_to_github():
             "Accept": "application/vnd.github.v3+json"
         }
         
+        # Получаем текущий SHA файла (если существует)
         response = requests.get(url, headers=headers)
-        sha = response.json().get('sha') if response.status_code == 0 else None
+        sha = None
+        if response.status_code == 200:
+            sha = response.json().get('sha')
+        elif response.status_code == 404:
+            # Файл не существует, будет создан новый
+            logger.info("Файл rating.json не найден, будет создан новый")
+        else:
+            logger.warning(f"Неожиданный статус при GET запросе: {response.status_code}")
         
         commit_data = {
             "message": f"Update rating {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-            "content": base64.b64encode(content.encode('utf-8')).decode('utf-8'),
-            "sha": sha
+            "content": base64.b64encode(content.encode('utf-8')).decode('utf-8')
         }
+        
+        if sha:
+            commit_data["sha"] = sha
         
         result_put = requests.put(url, headers=headers, json=commit_data)
         
@@ -102,7 +112,7 @@ def save_rating_to_github():
             logger.info(f"✅ Рейтинг сохранен в GitHub: {len(result)} участников")
             return True
         else:
-            logger.error(f"❌ Ошибка GitHub API: {result_put.status_code}")
+            logger.error(f"❌ Ошибка GitHub API: {result_put.status_code} - {result_put.text}")
             return False
             
     except Exception as e:
@@ -129,7 +139,6 @@ async def save_message_author(update: Update, context: ContextTypes.DEFAULT_TYPE
         user = update.message.from_user
         rating_db.add_or_update_user(user_id, user.username, user.first_name, user.last_name)
         logger.info(f"📝 Сохранён автор сообщения {message_id} -> {user_id}")
-
 
 # ============ ОСНОВНЫЕ ФУНКЦИИ БОТА ============
 
