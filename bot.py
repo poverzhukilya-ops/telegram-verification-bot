@@ -748,12 +748,12 @@ async def sync_all_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Только для админа!")
         return
     
-    await update.message.reply_text("🔄 Синхронизация участников из базы данных...")
+    await update.message.reply_text("🔄 Синхронизация участников...")
     
     try:
         chat_id = GROUP_ID
         count = 0
-        verified_count = 0
+        updated_count = 0
         
         # Получаем администраторов чата
         try:
@@ -761,16 +761,22 @@ async def sync_all_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for admin in admins:
                 user = admin.user
                 if not user.is_bot:
-                    rating_db.add_or_update_user(user.id, user.username, user.first_name, user.last_name)
-                    count += 1
-                    logger.info(f"✅ Добавлен админ: {user.id} (@{user.username})")
+                    # НЕ обновляем очки, только добавляем пользователя если его нет
+                    result = rating_db.add_or_update_user_preserve_points(
+                        user.id, user.username, user.first_name, user.last_name
+                    )
+                    if result == 'added':
+                        count += 1
+                    elif result == 'updated':
+                        updated_count += 1
+                    logger.info(f"✅ Обработан админ: {user.id} (@{user.username})")
         except Exception as e:
             logger.warning(f"Не удалось получить администраторов: {e}")
         
         # Синхронизируем пользователей из БД
         with sqlite3.connect('verification.db') as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT user_id, username, first_name, last_name, verified FROM users")
+            cursor.execute("SELECT user_id, username, first_name, last_name FROM users")
             rows = cursor.fetchall()
             
             for row in rows:
@@ -778,47 +784,44 @@ async def sync_all_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 username = row[1]
                 first_name = row[2]
                 last_name = row[3]
-                verified = row[4]
                 
-                # Проверяем, состоит ли пользователь в группе
                 try:
+                    # Проверяем, состоит ли пользователь в группе
                     member = await context.bot.get_chat_member(chat_id, user_id)
                     if member.status in ['member', 'administrator', 'creator']:
-                        rating_db.add_or_update_user(user_id, username, first_name, last_name)
-                        count += 1
-                        if verified:
-                            verified_count += 1
+                        result = rating_db.add_or_update_user_preserve_points(
+                            user_id, username, first_name, last_name
+                        )
+                        if result == 'added':
+                            count += 1
+                        elif result == 'updated':
+                            updated_count += 1
                 except Exception:
-                    # Пользователь не в группе
-                    pass
-        
-        # Сохраняем рейтинг в GitHub
-        if count > 0:
-            save_rating_to_github()
+                    # Пользователь не в группе, но всё равно добавляем если есть в БД
+                    result = rating_db.add_or_update_user_preserve_points(
+                        user_id, username, first_name, last_name
+                    )
+                    if result == 'added':
+                        count += 1
+                    elif result == 'updated':
+                        updated_count += 1
         
         # Получаем статистику
         stats = rating_db.get_stats()
         
         await update.message.reply_text(
             f"✅ Синхронизация завершена!\n\n"
-            f"👥 Добавлено/обновлено: {count} участников\n"
-            f"✅ Из них верифицировано: {verified_count}\n"
+            f"🆕 Добавлено новых: {count}\n"
+            f"🔄 Обновлено существующих: {updated_count}\n"
             f"📊 Всего в рейтинге: {stats['total_users']}\n"
             f"⭐ Всего очков: {stats['total_points']}\n"
             f"📈 Средний рейтинг: {stats['avg_points']}\n\n"
-            f"💡 Участники автоматически добавляются в рейтинг при:\n"
-            f"• Отправке сообщения в группе\n"
-            f"• Прохождении верификации"
+            f"💡 Очки пользователей сохранены!"
         )
         
     except Exception as e:
         logger.error(f"Ошибка синхронизации: {e}")
-        await update.message.reply_text(
-            f"❌ Ошибка синхронизации: {str(e)[:200]}\n\n"
-            f"💡 Участники автоматически добавляются в рейтинг при:\n"
-            f"• Отправке сообщения в группе\n"
-            f"• Прохождении верификации"
-        )
+        await update.message.reply_text(f"❌ Ошибка: {str(e)[:200]}")
 def main():
     """Запуск бота"""
     
