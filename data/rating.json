@@ -17,7 +17,7 @@
       "user_id": 852799858,
       "username": "Ilyapoverzhuk",
       "name": "Ilya",
-      "points": 0,
+      "points": -10,
       "level": 1,
       "projects": 0,
       "investments": 0.0,
@@ -25,5 +25,5 @@
     }
   ],
   "total": 2,
-  "updated_at": "2026-04-09T19:53:27.869251"
+  "updated_at": "2026-04-09T19:53:35.289282"
 }
