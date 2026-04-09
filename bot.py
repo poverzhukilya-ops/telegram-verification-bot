@@ -709,11 +709,11 @@ def run_api():
         logger.error(f"❌ Ошибка запуска API: {e}")
 
 
-# ============ ГЛАВНАЯ ФУНКЦИЯ ============
 def load_verified_users_from_db():
     """Загружает верифицированных пользователей из БД при запуске бота"""
     global verified_users
     try:
+        # Используем правильный путь к БД
         with sqlite3.connect('verification.db') as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT user_id, username, first_name FROM users WHERE verified = 1")
@@ -728,6 +728,8 @@ def load_verified_users_from_db():
                     'regulations_read': True,
                     'join_count': 1
                 }
+                # Также синхронизируем с rating_db
+                rating_db.add_or_update_user(user_id, row[1], row[2], None)
             logger.info(f"✅ Загружено {len(rows)} верифицированных пользователей из БД")
     except Exception as e:
         logger.error(f"❌ Ошибка загрузки пользователей из БД: {e}")
