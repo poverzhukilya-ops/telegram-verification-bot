@@ -135,29 +135,48 @@ class RatingDB:
             logger.info("База данных рейтинга инициализирована")
     
     def add_or_update_user(self, user_id, username, first_name, last_name):
-        """Добавление или обновление пользователя"""
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
+    """Добавление или обновление пользователя (НЕ сбрасывает очки)"""
+    with sqlite3.connect(self.db_path) as conn:
+        cursor = conn.cursor()
+        
+        # Проверяем, существует ли пользователь
+        cursor.execute('SELECT user_id FROM users WHERE user_id = ?', (user_id,))
+        user_exists = cursor.fetchone()
+        
+        if user_exists:
+            # Обновляем информацию
             cursor.execute('''
-                INSERT OR REPLACE INTO users 
-                (user_id, username, first_name, last_name, last_active, join_date)
-                VALUES (?, ?, ?, ?, ?, COALESCE((SELECT join_date FROM users WHERE user_id = ?), ?))
-            ''', (user_id, username, first_name, last_name, datetime.now(), user_id, datetime.now()))
-            
-            # Проверяем, есть ли пользователь в таблице рейтинга
-            cursor.execute('SELECT user_id FROM rating WHERE user_id = ?', (user_id,))
-            if not cursor.fetchone():
-                cursor.execute('''
-                    INSERT INTO rating (user_id, points, level, last_updated)
-                    VALUES (?, 0, 1, ?)
-                ''', (user_id, datetime.now()))
-            else:
-                # Если есть, обновляем только last_updated, но не меняем points
-                cursor.execute('''
-                    UPDATE rating SET last_updated = ? WHERE user_id = ?
-                ''', (datetime.now(), user_id))
-            
-            conn.commit()
+                UPDATE users 
+                SET username = COALESCE(?, username),
+                    first_name = COALESCE(?, first_name),
+                    last_name = COALESCE(?, last_name),
+                    last_active = ?
+                WHERE user_id = ?
+            ''', (username, first_name, last_name, datetime.now(), user_id))
+        else:
+            # Создаем нового пользователя
+            cursor.execute('''
+                INSERT INTO users (user_id, username, first_name, last_name, join_date, last_active)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (user_id, username, first_name, last_name, datetime.now(), datetime.now()))
+        
+        # Проверяем, есть ли запись в rating
+        cursor.execute('SELECT user_id FROM rating WHERE user_id = ?', (user_id,))
+        rating_exists = cursor.fetchone()
+        
+        if not rating_exists:
+            # Создаем запись в rating только если её нет
+            cursor.execute('''
+                INSERT INTO rating (user_id, points, level, last_updated)
+                VALUES (?, 0, 1, ?)
+            ''', (user_id, datetime.now()))
+        else:
+            # Обновляем только last_updated, НЕ трогаем points
+            cursor.execute('''
+                UPDATE rating SET last_updated = ? WHERE user_id = ?
+            ''', (datetime.now(), user_id))
+        
+        conn.commit()
     
     def update_rating(self, user_id, action_type, points_change, description=""):
         """Обновление рейтинга пользователя"""
