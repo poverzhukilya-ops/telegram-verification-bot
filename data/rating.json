@@ -3,6 +3,17 @@
   "data": [
     {
       "position": 1,
+      "user_id": 8066467254,
+      "username": "user_8066467254",
+      "name": "🍀 avantyurist 🍀",
+      "points": 10,
+      "level": 1,
+      "projects": 0,
+      "investments": 0.0,
+      "reputation": 0.0
+    },
+    {
+      "position": 2,
       "user_id": 852799858,
       "username": "Ilyapoverzhuk",
       "name": "Ilya",
@@ -13,6 +24,6 @@
       "reputation": 0.0
     }
   ],
-  "total": 1,
-  "updated_at": "2026-04-09T19:52:23.125532"
+  "total": 2,
+  "updated_at": "2026-04-09T19:53:27.869251"
 }
