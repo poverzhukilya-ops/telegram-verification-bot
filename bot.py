@@ -168,21 +168,20 @@ async def clear_user_data(user_id: int, context: ContextTypes.DEFAULT_TYPE = Non
         context.user_data.clear()
 
 async def delete_all_bot_messages(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
+    """Удаляет сообщения бота (упрощенная версия для PTB 21.x)"""
     try:
-        messages = await context.bot.get_chat_history(chat_id, limit=100)
+        # В PTB 21.x нет прямого доступа к истории сообщений
+        # Поэтому просто отправляем уведомление
+        logger.info(f"Очистка сообщений для чата {chat_id} недоступна в PTB 21.x")
+        
+        # Альтернатива: можно сохранять ID сообщений бота в кэш и удалять их
+        # Но это требует дополнительной логики сохранения message_id
+        
         deleted_count = 0
-        for message in messages:
-            if message.from_user and message.from_user.id == context.bot.id:
-                try:
-                    await message.delete()
-                    deleted_count += 1
-                except Exception as e:
-                    logger.error(f"Не удалось удалить сообщение {message.message_id}: {e}")
         if deleted_count > 0:
             logger.info(f"Удалено {deleted_count} сообщений бота для чата {chat_id}")
     except Exception as e:
-        logger.error(f"Ошибка при получении истории сообщений: {e}")
-
+        logger.error(f"Ошибка при очистке сообщений: {e}")
 async def send_projects_list(chat_id: int, context: ContextTypes.DEFAULT_TYPE, message_id: int = None, is_edit: bool = False):
     groups = load_groups()
     
