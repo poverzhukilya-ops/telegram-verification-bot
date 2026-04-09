@@ -7,23 +7,12 @@
       "username": "Ilyapoverzhuk",
       "name": "Ilya",
       "points": 0,
-      "level": 3,
-      "projects": 0,
-      "investments": 0.0,
-      "reputation": 0.0
-    },
-    {
-      "position": 2,
-      "user_id": 8066467254,
-      "username": "user_8066467254",
-      "name": "🍀 avantyurist 🍀",
-      "points": 0,
       "level": 1,
       "projects": 0,
       "investments": 0.0,
       "reputation": 0.0
     }
   ],
-  "total": 2,
-  "updated_at": "2026-04-09T18:54:53.625621"
+  "total": 1,
+  "updated_at": "2026-04-09T19:52:23.125532"
 }
