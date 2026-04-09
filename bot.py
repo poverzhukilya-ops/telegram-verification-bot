@@ -756,6 +756,7 @@ async def post_init(application: Application):
         BotCommand("about", "ℹ️ О сообществе"),
         BotCommand("help", "🆘 Помощь"),
         BotCommand("sync", "👥 Синхронизировать участников (админ)"),
+        BotCommand("reset_ilya", "🔄 Сбросить очки Илье (админ)"),
     ]
     
     await application.bot.set_my_commands(commands)
@@ -939,7 +940,7 @@ def main():
     application.add_handler(CommandHandler('rules', rules))
     application.add_handler(CommandHandler('about', about))
     application.add_handler(CommandHandler('help', help_command))
-    
+     application.add_handler(CommandHandler('reset_ilya', reset_points_command))
     # Команда для синхронизации всех участников (админ)
     application.add_handler(CommandHandler('sync', sync_all_users))
     
