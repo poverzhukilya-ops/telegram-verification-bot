@@ -5,6 +5,7 @@ import requests
 import base64
 import asyncio
 import threading
+import sqlite3
 from collections import deque
 from datetime import datetime
 from typing import Dict
