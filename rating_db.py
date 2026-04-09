@@ -5,6 +5,51 @@ import logging
 logger = logging.getLogger(__name__)
 
 class RatingDB:
+    def add_or_update_user_preserve_points(self, user_id, username, first_name, last_name):
+    """Добавление или обновление пользователя БЕЗ сброса очков"""
+    with sqlite3.connect(self.db_path) as conn:
+        cursor = conn.cursor()
+        
+        # Проверяем, существует ли пользователь в таблице users
+        cursor.execute('SELECT user_id FROM users WHERE user_id = ?', (user_id,))
+        user_exists = cursor.fetchone()
+        
+        if user_exists:
+            # Обновляем только информацию о пользователе
+            cursor.execute('''
+                UPDATE users 
+                SET username = ?, first_name = ?, last_name = ?, last_active = ?
+                WHERE user_id = ?
+            ''', (username, first_name, last_name, datetime.now(), user_id))
+            
+            # Проверяем, есть ли запись в rating
+            cursor.execute('SELECT user_id FROM rating WHERE user_id = ?', (user_id,))
+            rating_exists = cursor.fetchone()
+            
+            if not rating_exists:
+                # Создаем запись в rating с 0 очками
+                cursor.execute('''
+                    INSERT INTO rating (user_id, points, level, last_updated)
+                    VALUES (?, 0, 1, ?)
+                ''', (user_id, datetime.now()))
+            
+            conn.commit()
+            return 'updated'
+        else:
+            # Создаем нового пользователя
+            cursor.execute('''
+                INSERT INTO users (user_id, username, first_name, last_name, join_date, last_active)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (user_id, username, first_name, last_name, datetime.now(), datetime.now()))
+            
+            # Создаем запись в rating с 0 очками
+            cursor.execute('''
+                INSERT INTO rating (user_id, points, level, last_updated)
+                VALUES (?, 0, 1, ?)
+            ''', (user_id, datetime.now()))
+            
+            conn.commit()
+            return 'added'
     def __init__(self, db_path='rating.db'):
         self.db_path = db_path
         self.init_db()
