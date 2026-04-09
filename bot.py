@@ -599,7 +599,65 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return ConversationHandler.END
 
-
+async def reset_points_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Сбросить очки пользователю Илье (только админ)"""
+    user_id = update.effective_user.id
+    
+    # Проверка что это админ
+    if user_id != ADMIN_ID:
+        await update.message.reply_text("❌ Только для админа!")
+        return
+    
+    try:
+        target_user_id = 852799858  # ID Ильи
+        new_points = 0
+        
+        with sqlite3.connect('rating.db') as conn:
+            cursor = conn.cursor()
+            
+            # Проверяем текущие очки
+            cursor.execute('SELECT points FROM rating WHERE user_id = ?', (target_user_id,))
+            result = cursor.fetchone()
+            
+            if not result:
+                await update.message.reply_text(f"❌ Пользователь {target_user_id} не найден")
+                return
+            
+            old_points = result[0]
+            
+            # Обновляем очки
+            cursor.execute('''
+                UPDATE rating 
+                SET points = ?, 
+                    level = CASE 
+                        WHEN ? < 0 THEN 1
+                        ELSE (? / 100) + 1
+                    END,
+                    last_updated = ?
+                WHERE user_id = ?
+            ''', (new_points, new_points, new_points, datetime.now(), target_user_id))
+            
+            # Добавляем в историю
+            cursor.execute('''
+                INSERT INTO user_actions (user_id, action_type, points_change, description, created_at)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (target_user_id, 'admin_reset', new_points - old_points, 
+                  f"Админ {user_id} сбросил очки", datetime.now()))
+            
+            conn.commit()
+            
+        await update.message.reply_text(
+            f"✅ Очки пользователя {target_user_id} сброшены!\n"
+            f"📊 Было: {old_points}\n"
+            f"📊 Стало: {new_points}"
+        )
+        
+        # Сохраняем в GitHub
+        save_rating_to_github()
+        
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка: {e}")
+        logger.error(f"Ошибка в reset_points_command: {e}")
 # ============ ОБРАБОТЧИК СТАНДАРТНЫХ РЕАКЦИЙ TELEGRAM ============
 
 async def handle_message_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
