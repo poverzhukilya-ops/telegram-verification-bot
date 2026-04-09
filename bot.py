@@ -940,7 +940,7 @@ def main():
     application.add_handler(CommandHandler('rules', rules))
     application.add_handler(CommandHandler('about', about))
     application.add_handler(CommandHandler('help', help_command))
-     application.add_handler(CommandHandler('reset_ilya', reset_points_command))
+    application.add_handler(CommandHandler('reset_ilya', reset_points_command))
     # Команда для синхронизации всех участников (админ)
     application.add_handler(CommandHandler('sync', sync_all_users))
     
