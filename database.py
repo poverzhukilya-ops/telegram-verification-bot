@@ -1,14 +1,18 @@
 import sqlite3
 import json
+import os  # 👈 ДОБАВИТЬ
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 
 class Database:
-    def __init__(self, db_path="verification.db"):
+    def __init__(self, db_path=None):  # 👈 ИЗМЕНИТЬ
+        if db_path is None:
+            os.makedirs('data', exist_ok=True)  # 👈 ДОБАВИТЬ
+            db_path = 'data/verification.db'  # 👈 ИЗМЕНИТЬ
         self.db_path = db_path
         self._init_db()
     
-    def _init_db(self):
+    # ... весь остальной код без изменений
         """Инициализация базы данных"""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
