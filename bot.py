@@ -781,7 +781,7 @@ def load_verified_users_from_db():
     global verified_users
     try:
         # Используем правильный путь к БД
-        with sqlite3.connect('verification.db') as conn:
+         with sqlite3.connect('data/verification.db') as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT user_id, username, first_name FROM users WHERE verified = 1")
             rows = cursor.fetchall()
