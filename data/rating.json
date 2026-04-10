@@ -22,8 +22,19 @@
       "projects": 0,
       "investments": 0.0,
       "reputation": 0.0
+    },
+    {
+      "position": 3,
+      "user_id": 852799858,
+      "username": "Ilyapoverzhuk",
+      "name": "Ilya",
+      "points": -10,
+      "level": 1,
+      "projects": 0,
+      "investments": 0.0,
+      "reputation": 0.0
     }
   ],
-  "total": 2,
-  "updated_at": "2026-04-10T18:00:39.417876"
+  "total": 3,
+  "updated_at": "2026-04-10T18:01:13.636982"
 }
