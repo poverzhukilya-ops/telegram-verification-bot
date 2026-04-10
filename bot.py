@@ -612,7 +612,7 @@ async def reset_points_command(update: Update, context: ContextTypes.DEFAULT_TYP
         target_user_id = 852799858  # ID Ильи
         new_points = 0
         
-          with sqlite3.connect('data/rating.db') as conn:
+        with sqlite3.connect('data/rating.db') as conn:
             cursor = conn.cursor()
             
             # Проверяем текущие очки
