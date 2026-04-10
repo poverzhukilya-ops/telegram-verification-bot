@@ -833,7 +833,7 @@ async def sync_all_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.warning(f"Не удалось получить администраторов: {e}")
         
         # Синхронизируем пользователей из БД
-        with sqlite3.connect('verification.db') as conn:
+        with sqlite3.connect('data/verification.db') as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT user_id, username, first_name, last_name FROM users")
             rows = cursor.fetchall()
