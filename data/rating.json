@@ -3,6 +3,17 @@
   "data": [
     {
       "position": 1,
+      "user_id": 1949041642,
+      "username": "mr737gg",
+      "name": "Верховний главнокомандуючий",
+      "points": 10,
+      "level": 1,
+      "projects": 0,
+      "investments": 0.0,
+      "reputation": 0.0
+    },
+    {
+      "position": 2,
       "user_id": 8066467254,
       "username": "user_8066467254",
       "name": "🍀 avantyurist 🍀",
@@ -13,7 +24,7 @@
       "reputation": 0.0
     },
     {
-      "position": 2,
+      "position": 3,
       "user_id": 777000,
       "username": "user_777000",
       "name": "Telegram",
@@ -24,7 +35,7 @@
       "reputation": 0.0
     },
     {
-      "position": 3,
+      "position": 4,
       "user_id": 852799858,
       "username": "Ilyapoverzhuk",
       "name": "Ilya",
@@ -35,6 +46,6 @@
       "reputation": 0.0
     }
   ],
-  "total": 3,
-  "updated_at": "2026-04-10T18:01:13.636982"
+  "total": 4,
+  "updated_at": "2026-04-10T19:46:18.126047"
 }
