@@ -1,18 +1,19 @@
 import sqlite3
 from datetime import datetime
 import logging
-import os  # 👈 ДОБАВИТЬ
+import os
 
 logger = logging.getLogger(__name__)
 
 class RatingDB:
-    def __init__(self, db_path=None):  # 👈 ИЗМЕНИТЬ
+    def __init__(self, db_path=None):
         if db_path is None:
-            os.makedirs('data', exist_ok=True)  # 👈 ДОБАВИТЬ
-            db_path = 'data/rating.db'  # 👈 ИЗМЕНИТЬ
+            os.makedirs('data', exist_ok=True)
+            db_path = 'data/rating.db'
         self.db_path = db_path
         self.init_db()
     
+    def init_db(self):
         """Инициализация базы данных рейтинга"""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
