@@ -56,6 +56,21 @@ NEGATIVE_EMOJIS = {
     '😭', '🤢', '👹', '👺', '💀', '☠️', '⚠️', '🚫', '⛔', '❌'
 }
 
+def is_positive_emoji(emoji: str) -> bool:
+    """Проверяет, является ли эмодзи позитивным (с учётом вариаций)"""
+    base_emoji = emoji.strip('\uFE0F')
+    for pos in POSITIVE_EMOJIS:
+        if base_emoji.startswith(pos) or pos in base_emoji:
+            return True
+    return False
+
+def is_negative_emoji(emoji: str) -> bool:
+    """Проверяет, является ли эмодзи негативным (с учётом вариаций)"""
+    base_emoji = emoji.strip('\uFE0F')
+    for neg in NEGATIVE_EMOJIS:
+        if base_emoji.startswith(neg) or neg in base_emoji:
+            return True
+    return False
 # ============ ФУНКЦИЯ СОХРАНЕНИЯ РЕЙТИНГА В GITHUB ============
 def save_rating_to_github():
     """Сохраняет рейтинг в GitHub репозиторий"""
