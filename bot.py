@@ -44,12 +44,11 @@ reaction_cache_order = deque()
 
 # Списки позитивных и негативных эмодзи
 POSITIVE_EMOJIS = {
-    '👍', '❤️', '🔥', '🎉', '😍', '🥰', '💯', '😁', '🤩', '👌',
-    '👏', '💪', '🙌', '✨', '⭐', '🌟', '💖', '💗', '💓', '💕',
+    '👍', '❤️', '❤', '♥️', '♥', '🔥', '🎉', '😍', '🥰', '💯', '😁', '🤩', '👌',
+    '👏', '💪', '🙌', '✨', '⭐', '🌟', '💖', '💗', '💓', '💕', '💘', '💝',
     '😊', '☺️', '😄', '😃', '😀', '🎊', '🏆', '🥇', '💎', '🫶',
     '🤝', '🙏', '💋', '😘', '🥳', '🍾', '🎂', '🎁', '🚀', '💡'
 }
-
 NEGATIVE_EMOJIS = {
     '👎', '😡', '🤬', '💩', '😠', '🤮', '👿', '💔', '😤', '😒',
     '🙄', '😑', '😐', '🤨', '😕', '😟', '😔', '😞', '😖', '😣',
@@ -58,27 +57,37 @@ NEGATIVE_EMOJIS = {
 
 def is_positive_emoji(emoji: str) -> bool:
     """Проверяет, является ли эмодзи позитивным (с учётом вариаций)"""
-    # Логируем сырой эмодзи для отладки
-    logger.info(f"🔍 Проверка эмодзи: '{emoji}' (длина: {len(emoji)}, байты: {emoji.encode('utf-8')})")
+    
+    # Особая проверка для всех видов сердец (Unicode + обычные)
+    if '\u2764' in emoji or '❤' in emoji or '♥' in emoji or '💗' in emoji or '💓' in emoji or '💕' in emoji or '💖' in emoji or '💘' in emoji or '💝' in emoji:
+        return True
     
     # Прямая проверка
     if emoji in POSITIVE_EMOJIS:
-        logger.info(f"✅ Найдено прямое совпадение: {emoji}")
         return True
     
-    # Проверка с удалением вариаций
+    # Проверка с удалением вариаций (для 👍🏻, 👍🏼 и т.д.)
     base_emoji = emoji.strip('\uFE0F')
     for pos in POSITIVE_EMOJIS:
         if base_emoji.startswith(pos) or pos in base_emoji:
-            logger.info(f"✅ Найдено совпадение: {pos} в {base_emoji}")
             return True
     
-    # Особая проверка для сердца
-    if '❤' in emoji or '♥' in emoji:
-        logger.info(f"✅ Найдено сердце: {emoji}")
+    return False
+
+
+def is_negative_emoji(emoji: str) -> bool:
+    """Проверяет, является ли эмодзи негативным (с учётом вариаций)"""
+    
+    # Прямая проверка
+    if emoji in NEGATIVE_EMOJIS:
         return True
     
-    logger.info(f"❌ Эмодзи не распознан как позитивный: {emoji}")
+    # Проверка с удалением вариаций (для 👎🏻, 👎🏼 и т.д.)
+    base_emoji = emoji.strip('\uFE0F')
+    for neg in NEGATIVE_EMOJIS:
+        if base_emoji.startswith(neg) or neg in base_emoji:
+            return True
+    
     return False
 # ============ ФУНКЦИЯ СОХРАНЕНИЯ РЕЙТИНГА В GITHUB ============
 def save_rating_to_github():
