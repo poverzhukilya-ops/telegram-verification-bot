@@ -738,24 +738,34 @@ async def handle_message_reaction(update: Update, context: ContextTypes.DEFAULT_
         return
     
     if user.id == author_id:
+        logger.info(f"↩️ Пользователь реагирует на своё сообщение")
         return
     
     # Вычисляем дельту рейтинга
     delta = 0
     
     for emoji in old_reactions:
-        if is_positive_emoji(emoji):
+        pos = is_positive_emoji(emoji)
+        neg = is_negative_emoji(emoji)
+        logger.info(f"🔍 Старая реакция: '{emoji}' -> pos={pos}, neg={neg}")
+        if pos:
             delta -= 10
-        elif is_negative_emoji(emoji):
+        elif neg:
             delta += 10
     
     for emoji in new_reactions:
-        if is_positive_emoji(emoji):
+        pos = is_positive_emoji(emoji)
+        neg = is_negative_emoji(emoji)
+        logger.info(f"🔍 Новая реакция: '{emoji}' -> pos={pos}, neg={neg}")
+        if pos:
             delta += 10
-        elif is_negative_emoji(emoji):
+        elif neg:
             delta -= 10
     
+    logger.info(f"📊 Дельта = {delta}")
+    
     if delta == 0:
+        logger.info(f"⚖️ Дельта = 0, очки не меняются")
         return
     
     # Обновляем рейтинг
@@ -764,7 +774,6 @@ async def handle_message_reaction(update: Update, context: ContextTypes.DEFAULT_
     
     save_rating_to_github()
     logger.info(f"✅ Рейтинг обновлён: {delta} для автора {author_id}")
-
 # ============ ДОПОЛНИТЕЛЬНЫЕ КОМАНДЫ ============
 
 async def get_message_reactions(update: Update, context: ContextTypes.DEFAULT_TYPE):
