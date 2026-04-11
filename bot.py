@@ -43,9 +43,18 @@ reaction_cache = {}
 reaction_cache_order = deque()
 
 # Списки позитивных и негативных эмодзи
-POSITIVE_EMOJIS = {'👍', '❤️', '🔥', '🎉', '😍', '🥰', '💯', '😁', '🤩', '👌'}
-NEGATIVE_EMOJIS = {'👎', '😡', '🤬', '💩', '👎🏼', '😠', '👎🏻', '👎🏽'}
+POSITIVE_EMOJIS = {
+    '👍', '❤️', '🔥', '🎉', '😍', '🥰', '💯', '😁', '🤩', '👌',
+    '👏', '💪', '🙌', '✨', '⭐', '🌟', '💖', '💗', '💓', '💕',
+    '😊', '☺️', '😄', '😃', '😀', '🎊', '🏆', '🥇', '💎', '🫶',
+    '🤝', '🙏', '💋', '😘', '🥳', '🍾', '🎂', '🎁', '🚀', '💡'
+}
 
+NEGATIVE_EMOJIS = {
+    '👎', '😡', '🤬', '💩', '😠', '🤮', '👿', '💔', '😤', '😒',
+    '🙄', '😑', '😐', '🤨', '😕', '😟', '😔', '😞', '😖', '😣',
+    '😭', '🤢', '👹', '👺', '💀', '☠️', '⚠️', '🚫', '⛔', '❌'
+}
 
 # ============ ФУНКЦИЯ СОХРАНЕНИЯ РЕЙТИНГА В GITHUB ============
 def save_rating_to_github():
@@ -658,6 +667,24 @@ async def reset_points_command(update: Update, context: ContextTypes.DEFAULT_TYP
     except Exception as e:
         await update.message.reply_text(f"❌ Ошибка: {e}")
         logger.error(f"Ошибка в reset_points_command: {e}")
+
+def is_positive_emoji(emoji: str) -> bool:
+    """Проверяет, является ли эмодзи позитивным (с учётом вариаций)"""
+    # Убираем вариации оттенка кожи и пола
+    base_emoji = emoji.strip('\uFE0F')  # Убираем variation selector
+    # Проверяем первые символы для составных эмодзи
+    for pos in POSITIVE_EMOJIS:
+        if base_emoji.startswith(pos) or pos in base_emoji:
+            return True
+    return False
+
+def is_negative_emoji(emoji: str) -> bool:
+    """Проверяет, является ли эмодзи негативным (с учётом вариаций)"""
+    base_emoji = emoji.strip('\uFE0F')
+    for neg in NEGATIVE_EMOJIS:
+        if base_emoji.startswith(neg) or neg in base_emoji:
+            return True
+    return False
 # ============ ОБРАБОТЧИК СТАНДАРТНЫХ РЕАКЦИЙ TELEGRAM ============
 
 async def handle_message_reaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -693,15 +720,15 @@ async def handle_message_reaction(update: Update, context: ContextTypes.DEFAULT_
     delta = 0
     
     for emoji in old_reactions:
-        if emoji in POSITIVE_EMOJIS:
+        if is_positive_emoji(emoji):
             delta -= 10
-        elif emoji in NEGATIVE_EMOJIS:
+        elif is_negative_emoji(emoji):
             delta += 10
     
     for emoji in new_reactions:
-        if emoji in POSITIVE_EMOJIS:
+        if is_positive_emoji(emoji):
             delta += 10
-        elif emoji in NEGATIVE_EMOJIS:
+        elif is_negative_emoji(emoji):
             delta -= 10
     
     if delta == 0:
@@ -713,7 +740,6 @@ async def handle_message_reaction(update: Update, context: ContextTypes.DEFAULT_
     
     save_rating_to_github()
     logger.info(f"✅ Рейтинг обновлён: {delta} для автора {author_id}")
-
 
 # ============ ДОПОЛНИТЕЛЬНЫЕ КОМАНДЫ ============
 
