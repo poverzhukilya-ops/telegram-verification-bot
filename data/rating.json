@@ -3,10 +3,10 @@
   "data": [
     {
       "position": 1,
-      "user_id": 1949041642,
-      "username": "mr737gg",
-      "name": "Верховний главнокомандуючий",
-      "points": 10,
+      "user_id": 8066467254,
+      "username": "user_8066467254",
+      "name": "🍀 avantyurist 🍀",
+      "points": 20,
       "level": 1,
       "projects": 0,
       "investments": 0.0,
@@ -14,9 +14,9 @@
     },
     {
       "position": 2,
-      "user_id": 8066467254,
-      "username": "user_8066467254",
-      "name": "🍀 avantyurist 🍀",
+      "user_id": 1949041642,
+      "username": "mr737gg",
+      "name": "Верховний главнокомандуючий",
       "points": 10,
       "level": 1,
       "projects": 0,
@@ -36,6 +36,17 @@
     },
     {
       "position": 4,
+      "user_id": 8514940326,
+      "username": "Seyeyeyeyy",
+      "name": "Reza Bagheri",
+      "points": 0,
+      "level": 1,
+      "projects": 0,
+      "investments": 0.0,
+      "reputation": 0.0
+    },
+    {
+      "position": 5,
       "user_id": 852799858,
       "username": "Ilyapoverzhuk",
       "name": "Ilya",
@@ -46,6 +57,6 @@
       "reputation": 0.0
     }
   ],
-  "total": 4,
-  "updated_at": "2026-04-11T07:51:21.679905"
+  "total": 5,
+  "updated_at": "2026-04-11T07:56:59.035692"
 }
