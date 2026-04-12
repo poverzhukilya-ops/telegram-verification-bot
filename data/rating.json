@@ -3,9 +3,9 @@
   "data": [
     {
       "position": 1,
-      "user_id": 8066467254,
-      "username": "user_8066467254",
-      "name": "🍀 avantyurist 🍀",
+      "user_id": 1949041642,
+      "username": "mr737gg",
+      "name": "Верховний главнокомандуючий",
       "points": 30,
       "level": 1,
       "projects": 0,
@@ -14,10 +14,10 @@
     },
     {
       "position": 2,
-      "user_id": 1949041642,
-      "username": "mr737gg",
-      "name": "Верховний главнокомандуючий",
-      "points": 20,
+      "user_id": 8066467254,
+      "username": "user_8066467254",
+      "name": "🍀 avantyurist 🍀",
+      "points": 30,
       "level": 1,
       "projects": 0,
       "investments": 0.0,
@@ -58,5 +58,5 @@
     }
   ],
   "total": 5,
-  "updated_at": "2026-04-11T14:59:14.423791"
+  "updated_at": "2026-04-12T13:04:14.296122"
 }
