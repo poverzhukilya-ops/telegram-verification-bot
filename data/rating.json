@@ -25,10 +25,10 @@
     },
     {
       "position": 3,
-      "user_id": 777000,
-      "username": "user_777000",
-      "name": "Telegram",
-      "points": 0,
+      "user_id": 811177923,
+      "username": "Volodymyr_Kyslianov",
+      "name": "Volodymyr Kyslianov",
+      "points": 10,
       "level": 1,
       "projects": 0,
       "investments": 0.0,
@@ -36,9 +36,9 @@
     },
     {
       "position": 4,
-      "user_id": 811177923,
-      "username": "Volodymyr_Kyslianov",
-      "name": "Volodymyr Kyslianov",
+      "user_id": 777000,
+      "username": "user_777000",
+      "name": "Telegram",
       "points": 0,
       "level": 1,
       "projects": 0,
@@ -69,5 +69,5 @@
     }
   ],
   "total": 6,
-  "updated_at": "2026-04-15T18:44:54.439993"
+  "updated_at": "2026-04-15T18:45:33.177159"
 }
