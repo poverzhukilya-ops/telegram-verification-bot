@@ -47,6 +47,17 @@
     },
     {
       "position": 5,
+      "user_id": 5853444660,
+      "username": "glibgsr",
+      "name": "Glib Gusar",
+      "points": 0,
+      "level": 1,
+      "projects": 0,
+      "investments": 0.0,
+      "reputation": 0.0
+    },
+    {
+      "position": 6,
       "user_id": 8514940326,
       "username": "Seyeyeyeyy",
       "name": "Reza Bagheri",
@@ -57,7 +68,7 @@
       "reputation": 0.0
     },
     {
-      "position": 6,
+      "position": 7,
       "user_id": 852799858,
       "username": "Ilyapoverzhuk",
       "name": "Ilya",
@@ -68,6 +79,6 @@
       "reputation": 0.0
     }
   ],
-  "total": 6,
-  "updated_at": "2026-04-15T19:24:12.431136"
+  "total": 7,
+  "updated_at": "2026-04-16T09:39:27.258887"
 }
